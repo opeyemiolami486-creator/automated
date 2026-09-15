@@ -68,10 +68,11 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
             candidates = []
             if prefix:
                 candidates.append(f"{parsed.scheme}://{parsed.netloc}{prefix}/requirements")
-            candidates.extend(["/requirements", "/api/requirements", "/api/dudas/requirements"])
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            candidates.extend([origin + "/requirements", origin + "/api/requirements", origin + "/api/dudas/requirements"])
         errors = []
         for path in dict.fromkeys(candidates):
-            url = path if path.startswith(("http://", "https://")) else f"{base_url.rstrip('/')}{path}"
+            url = path if path.startswith(("http://", "https://")) else f"{base_url.rstrip('/')}/{path.lstrip('/')}"
             try:
                 return await json_request(session, "GET", url)
             except Exception as exc:

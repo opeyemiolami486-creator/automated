@@ -33,7 +33,7 @@ from site_contract import validate_contract
 LOG = logging.getLogger("telegram_score_bot")
 STATE_FILE = Path(os.getenv("TELEGRAM_STATE_FILE", "telegram_bot_state.json"))
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-BASE_URL = os.getenv("MOCK_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+BASE_URL = (os.getenv("MOCK_BASE_URL") or "http://127.0.0.1:8080").rstrip("/")
 ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID")
 MIN_HEIGHT = int(os.getenv("MOCK_MIN_HEIGHT", "1900"))
 MAX_HEIGHT = int(os.getenv("MOCK_MAX_HEIGHT", "2500"))
@@ -75,7 +75,8 @@ def allowed(chat_id: str) -> bool:
 
 
 def site_for(state: dict[str, Any], chat_id: str) -> str:
-    return str(state.setdefault("sites", {}).get(chat_id) or BASE_URL).rstrip("/")
+    value = str(state.setdefault("sites", {}).get(chat_id) or BASE_URL).strip()
+    return value.rstrip("/") or BASE_URL
 
 
 async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], update: dict[str, Any]) -> None:
