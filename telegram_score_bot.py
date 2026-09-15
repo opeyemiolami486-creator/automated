@@ -26,7 +26,8 @@ from typing import Any
 
 import aiohttp
 
-from authorized_test_client import inspect_site, run_site
+from authorized_test_client import allowed_host, inspect_site, run_site
+from site_code_discovery import discover
 
 LOG = logging.getLogger("telegram_score_bot")
 STATE_FILE = Path(os.getenv("TELEGRAM_STATE_FILE", "telegram_bot_state.json"))
@@ -92,11 +93,13 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     active = state.setdefault("active", {})
 
     if command in {"/start", "/help"}:
-        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/clear")
+        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/clear")
     elif command == "/site":
         value = argument.strip().rstrip("/")
         if not value.startswith(("http://", "https://")):
             await send_message(session, chat_id, "Usage: /site https://authorized-team-test.example")
+        elif not allowed_host(value):
+            await send_message(session, chat_id, "That host is not allowlisted. Add its hostname to AUTHORIZED_TEST_DOMAINS, restart the bot, then try /site again.")
         else:
             sites[chat_id] = value
             save_state(state)
@@ -108,6 +111,13 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             await send_message(session, chat_id, "Requirements found for " + site + ":\n" + json.dumps(requirements, indent=2)[:3500])
         except Exception as exc:
             await send_message(session, chat_id, f"Could not inspect {site}: {exc}")
+    elif command == "/discover":
+        site = site_for(state, chat_id)
+        try:
+            result = await discover(site)
+            await send_message(session, chat_id, "Read-only endpoint candidates:\n" + json.dumps(result, indent=2)[:3800])
+        except Exception as exc:
+            await send_message(session, chat_id, f"Could not scan site code: {exc}")
     elif command == "/identity":
         value = argument.strip()
         if not value:

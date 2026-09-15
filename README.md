@@ -235,6 +235,7 @@ Webcade. The bot supports:
 
    ```text
    /site https://staging.example.com/game
+   /discover
    /inspect
    /identity demo-player
    /on
@@ -289,6 +290,13 @@ locations. The selected path is preserved when the declared leaderboard,
 start, and submit endpoints are relative to it. If discovery fails, the bot
 reports every URL it tried so the team can provide `REQUIREMENTS_PATH` or the
 correct API contract.
+
+`/discover` performs a read-only scan of the selected page and linked
+JavaScript files. It reports likely leaderboard, run-token, and submission URLs
+found in strings such as `fetch()` calls. It does not execute the site’s
+JavaScript, POST to discovered endpoints, bypass authentication, or infer a
+request body. The team must confirm the candidates and publish the requirements
+contract before `/on` can submit test scores.
 
 After `/site`, `/inspect`, and `/identity`, send `/on`. The bot then performs
 the authorized test run repeatedly at `ACTIVE_INTERVAL_SECONDS` (default
