@@ -131,12 +131,23 @@ async def board(request: web.Request) -> web.Response:
     return web.json_response({"key": "local", "players": len(state["scores"]), "list": rows})
 
 
+async def requirements(request: web.Request) -> web.Response:
+    """Declare the public fields required by the local test submission API."""
+    return web.json_response({
+        "ok": True,
+        "identity": {"field": "address", "label": "wallet address or username", "required": True},
+        "token": {"start_endpoint": "/api/dudas/start", "field": "token", "required": True},
+        "score_fields": ["score", "height", "coins", "toads", "combo"],
+    })
+
+
 def create_app() -> web.Application:
     app = web.Application()
     app["state"] = load_state()
     app.router.add_post("/api/dudas/start", start)
     app.router.add_post("/api/dudas/score", submit_score)
     app.router.add_get("/api/dudas/board", board)
+    app.router.add_get("/api/dudas/requirements", requirements)
     return app
 
 

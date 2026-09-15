@@ -138,6 +138,8 @@ python mock_score_automation.py --base-url http://127.0.0.1:8080 --increment 100
 ```
 
 The client first reads the local top score, requests a fresh one-use run token,
+reads `/api/dudas/requirements` to discover the required identity field,
+prompts for a wallet address or username when one was not configured,
 chooses a realistic reference-style climb height from **1,900 through 2,500**,
 calculates a score at least **50,000 above the current local top score**, and submits it to the
 localhost mock. You can customize the range with `--min-height` and
@@ -150,6 +152,19 @@ is ignored by Git.
 
 This test path is deliberately restricted to localhost and never sends the
 score to Webcade or any public leaderboard.
+
+To provide the identity non-interactively:
+
+```bash
+MOCK_IDENTITY=demo-player python mock_score_automation.py \
+  --base-url http://127.0.0.1:8080
+```
+
+The discovered identity is included in the submission using the field declared
+by the requirements response. In the mock API that field is `address`, labelled
+“wallet address or username.” A real team site may instead declare `username`,
+`wallet`, or another public identifier; the adapter should use the exact field
+the team documents.
 
 ## Adapting to a team-owned test website
 

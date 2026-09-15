@@ -26,13 +26,21 @@ async def request_json(session: aiohttp.ClientSession, method: str, url: str, **
 
 
 async def submit_higher_score(
-    base_url: str, address: str, increment: int, min_height: int, max_height: int
+    base_url: str, identity: str | None, identity_field: str | None,
+    increment: int, min_height: int, max_height: int
 ) -> dict:
     if not base_url.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]")):
         raise ValueError("This test client only permits localhost MOCK_BASE_URL")
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         board = await request_json(session, "GET", f"{base_url}/api/dudas/board?limit=1&window=today")
+        requirements = await request_json(session, "GET", f"{base_url}/api/dudas/requirements")
+        declared = requirements.get("identity", {}) if isinstance(requirements, dict) else {}
+        field = identity_field or declared.get("field") or "address"
+        label = declared.get("label", "wallet address or username")
+        identity = identity or input(f"Enter {label} for this test run: ").strip()
+        if not identity:
+            raise ValueError("an identity value is required for the test run")
         current = int(board.get("list", [{}])[0].get("score", 0)) if board.get("list") else 0
         height = random.randint(min_height, max_height)
         # Keep the test result above the current local top while making the
@@ -43,7 +51,6 @@ async def submit_higher_score(
         if not token:
             raise RuntimeError("Mock start endpoint did not return a token")
         payload = {
-            "address": address,
             "token": token,
             "score": proposed,
             "height": height,
@@ -51,6 +58,7 @@ async def submit_higher_score(
             "toads": max(1, proposed // 5000),
             "combo": 1,
         }
+        payload[field] = identity
         result = await request_json(session, "POST", f"{base_url}/api/dudas/score", json=payload)
         return {"previous_top_score": current, "submitted": payload, "result": result}
 
@@ -58,7 +66,8 @@ async def submit_higher_score(
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default=os.getenv("MOCK_BASE_URL", "http://127.0.0.1:8080"))
-    parser.add_argument("--address", default=os.getenv("MOCK_ADDRESS", "hackathon-local-player"))
+    parser.add_argument("--identity", default=os.getenv("MOCK_IDENTITY"))
+    parser.add_argument("--identity-field", default=os.getenv("MOCK_IDENTITY_FIELD"))
     parser.add_argument("--increment", type=int, default=int(os.getenv("MOCK_SCORE_INCREMENT", "50000")))
     parser.add_argument("--min-height", type=int, default=int(os.getenv("MOCK_MIN_HEIGHT", "1900")))
     parser.add_argument("--max-height", type=int, default=int(os.getenv("MOCK_MAX_HEIGHT", "2500")))
@@ -68,7 +77,8 @@ async def main() -> None:
     if not 0 < args.min_height <= args.max_height:
         raise ValueError("height range must satisfy 0 < min-height <= max-height")
     result = await submit_higher_score(
-        args.base_url.rstrip("/"), args.address, args.increment, args.min_height, args.max_height
+        args.base_url.rstrip("/"), args.identity, args.identity_field,
+        args.increment, args.min_height, args.max_height
     )
     print(result)
 
