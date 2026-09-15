@@ -316,4 +316,43 @@ called by this repository’s test automation.
 
 ## Deployment
 
-This is a long-running worker. Run it on a permitted server, container, or managed worker service with environment variables configured. For a hackathon demo, `RUN_ONCE=true` is useful for a single controlled test; for continuous monitoring, leave it false and use a host that stays online.
+This is a long-running worker. Railway is configured through `Procfile` and
+`railway.toml` to run:
+
+```text
+python telegram_score_bot.py
+```
+
+### Railway setup
+
+1. In Railway, create a new project and choose **Deploy from GitHub repo**.
+2. Select `opeyemiolami486-creator/automated` and deploy the `main` branch.
+3. In the service’s **Variables** panel, add:
+
+   ```text
+   TELEGRAM_BOT_TOKEN=<BotFather token>
+   TELEGRAM_ALLOWED_CHAT_ID=<your private Telegram chat id>
+   AUTHORIZED_TEST_DOMAINS=<team test hostname>
+   ACTIVE_INTERVAL_SECONDS=0.5
+   MOCK_SCORE_INCREMENT=50000
+   MOCK_MIN_HEIGHT=1900
+   MOCK_MAX_HEIGHT=2500
+   LOG_LEVEL=INFO
+   ```
+
+   Set `MOCK_BASE_URL` only if the team site is using the generic adapter as
+   its configured default; judges can otherwise select the site with `/site`.
+   If the team’s requirements URL is non-standard, also set
+   `REQUIREMENTS_PATH`.
+
+4. Confirm the service is a **worker**, not a web service. It does not need a
+   public port.
+5. Open Railway logs and confirm `Telegram bot active` appears.
+6. In Telegram, use `/start`, then `/site`, `/discover`, `/inspect`,
+   `/identity`, and `/on`.
+
+Keep all secrets in Railway Variables. Never commit `.env`, the Telegram token,
+wallet private keys, seed phrases, or Telegram identity state. Railway may
+restart a worker, so the bot keeps its Telegram update offset and chat state in
+its local filesystem only for the lifetime of that container; send `/site`,
+`/identity`, and `/on` again after a fresh deployment if needed.
