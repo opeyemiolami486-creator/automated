@@ -56,6 +56,8 @@ class Config:
     request_timeout: float
     enable_submission: bool
     once: bool
+    token_json_path: str
+    token_field: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -69,6 +71,8 @@ class Config:
             request_timeout=env_float("REQUEST_TIMEOUT_SECONDS", 20.0),
             enable_submission=env_bool("ENABLE_SUBMISSION", False),
             once=env_bool("RUN_ONCE", False),
+            token_json_path=os.getenv("TOKEN_JSON_PATH", "token"),
+            token_field=os.getenv("TOKEN_FIELD", "token"),
         )
 
 
@@ -122,6 +126,34 @@ class AutomationWorker:
                 raise RuntimeError(f"HTTP {response.status} from {url}: {data}")
             return data
 
+    def extract_token(self, response: Any) -> str:
+        """Extract a server-issued token from common JSON response shapes.
+
+        TOKEN_JSON_PATH supports dotted paths such as ``data.run.token``.
+        The fallback accepts ``token`` in common nested ``data``/``run`` objects.
+        """
+        candidates: list[Any] = []
+        if isinstance(response, dict):
+            value: Any = response
+            for part in self.config.token_json_path.split("."):
+                if not isinstance(value, dict) or part not in value:
+                    value = None
+                    break
+                value = value[part]
+            candidates.append(value)
+            candidates.extend([
+                response.get("token"),
+                response.get("run_token"),
+                (response.get("data") or {}).get("token") if isinstance(response.get("data"), dict) else None,
+                (response.get("run") or {}).get("token") if isinstance(response.get("run"), dict) else None,
+            ])
+        elif isinstance(response, str):
+            candidates.append(response)
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        raise ValueError("START_URL response did not contain a server-issued run token")
+
     def load_answers(self) -> dict[str, Any]:
         if not self.config.answer_file.exists():
             return {}
@@ -150,11 +182,9 @@ class AutomationWorker:
 
             answer = answers[item_id]
             token_data = await self.post_json(session, self.config.start_url, {})
-            token = token_data.get("token") if isinstance(token_data, dict) else None
-            if not token:
-                raise ValueError("START_URL response did not contain a token")
+            token = self.extract_token(token_data)
 
-            submission = {"question_id": item_id, "answer": answer, "token": token}
+            submission = {"question_id": item_id, "answer": answer, self.config.token_field: token}
             if self.config.enable_submission:
                 result = await self.post_json(session, self.config.submit_url, submission)
                 LOG.info("Submitted answer for %s: %s", item_id, result)

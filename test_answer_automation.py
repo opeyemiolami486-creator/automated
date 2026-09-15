@@ -5,6 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from answer_automation import AutomationWorker, Config
+
 
 def test_decimal_polling_and_invalid_values():
     env = os.environ.copy()
@@ -42,8 +44,28 @@ def test_state_file_round_trip():
         assert json.loads(path.read_text()) == {"q-1": "yes"}
 
 
+def test_token_extraction_shapes():
+    config = Config(
+        question_url="https://example.test/questions",
+        start_url="https://example.test/start",
+        submit_url="https://example.test/submit",
+        answer_file=Path("answers.json"),
+        state_file=Path("state.json"),
+        poll_seconds=1.0,
+        request_timeout=10.0,
+        enable_submission=False,
+        once=True,
+        token_json_path="data.run.token",
+        token_field="runToken",
+    )
+    worker = AutomationWorker(config)
+    assert worker.extract_token({"data": {"run": {"token": "nested-token"}}}) == "nested-token"
+    assert worker.extract_token({"run_token": "alternate-token"}) == "alternate-token"
+
+
 if __name__ == "__main__":
     test_decimal_polling_and_invalid_values()
     test_invalid_interval_is_rejected()
     test_state_file_round_trip()
+    test_token_extraction_shapes()
     print("answer automation tests passed")

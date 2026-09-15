@@ -37,6 +37,26 @@ POST /submit
 
 A Webcade Dudas Jump-style game uses the same general pattern: `POST /start` returns a run token and a later `POST /score` sends the completed result with that token. For a hackathon answer system, use your own documented field names and endpoint URLs; do not assume that an unrelated website accepts this payload.
 
+### Team test-site token compatibility
+
+For an authorized team test website, the worker extracts only a token returned by the configured start endpoint; it does not guess, mint, or bypass authentication. It supports these response shapes by default:
+
+```json
+{"token": "..."}
+{"run_token": "..."}
+{"data": {"token": "..."}}
+{"run": {"token": "..."}}
+```
+
+If the team API nests the token elsewhere, configure a dotted JSON path and the field name expected by the submission endpoint:
+
+```text
+TOKEN_JSON_PATH=data.run.token
+TOKEN_FIELD=runToken
+```
+
+The worker then sends that exact server-issued value in the configured field. The team should provide the endpoint contract and authentication method; the worker cannot obtain a token from an endpoint that requires missing credentials, browser-only proof, CAPTCHA completion, or an undocumented private flow.
+
 ## Install and configure
 
 ```bash
