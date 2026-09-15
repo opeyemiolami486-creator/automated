@@ -7,6 +7,8 @@ Commands:
   /inspect
   /identity <public wallet address or username>
   /status
+  /on
+  /off
   /run
   /clear
 
@@ -34,17 +36,18 @@ ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID")
 MIN_HEIGHT = int(os.getenv("MOCK_MIN_HEIGHT", "1900"))
 MAX_HEIGHT = int(os.getenv("MOCK_MAX_HEIGHT", "2500"))
 INCREMENT = int(os.getenv("MOCK_SCORE_INCREMENT", "50000"))
+ACTIVE_INTERVAL = float(os.getenv("ACTIVE_INTERVAL_SECONDS", "60"))
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
 def load_state() -> dict[str, Any]:
     if not STATE_FILE.exists():
-        return {"identities": {}, "sites": {}}
+        return {"identities": {}, "sites": {}, "active": {}}
     try:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {"identities": {}, "sites": {}}
+        return data if isinstance(data, dict) else {"identities": {}, "sites": {}, "active": {}}
     except (OSError, json.JSONDecodeError):
-        return {"identities": {}, "sites": {}}
+        return {"identities": {}, "sites": {}, "active": {}}
 
 
 def save_state(state: dict[str, Any]) -> None:
@@ -86,9 +89,10 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     command = command.split("@", 1)[0].lower()
     identities = state.setdefault("identities", {})
     sites = state.setdefault("sites", {})
+    active = state.setdefault("active", {})
 
     if command in {"/start", "/help"}:
-        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/inspect\n/identity <wallet or username>\n/status\n/run\n/clear")
+        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/clear")
     elif command == "/site":
         value = argument.strip().rstrip("/")
         if not value.startswith(("http://", "https://")):
@@ -115,8 +119,26 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     elif command == "/clear":
         identities.pop(chat_id, None)
         sites.pop(chat_id, None)
+        active.pop(chat_id, None)
         save_state(state)
         await send_message(session, chat_id, "Saved identity and site cleared.")
+    elif command == "/on":
+        if not identities.get(chat_id):
+            await send_message(session, chat_id, "Send /identity <public wallet address or username> first.")
+            return
+        site = site_for(state, chat_id)
+        try:
+            await inspect_site(site)
+        except Exception as exc:
+            await send_message(session, chat_id, f"Cannot activate this site: {exc}")
+            return
+        active[chat_id] = {"next_run": 0}
+        save_state(state)
+        await send_message(session, chat_id, f"Automation ON for {site}. It will continue until /off. Interval: {ACTIVE_INTERVAL:g}s.")
+    elif command == "/off":
+        active.pop(chat_id, None)
+        save_state(state)
+        await send_message(session, chat_id, "Automation OFF. No more automatic test submissions will run for this chat.")
     elif command == "/status":
         site = site_for(state, chat_id)
         async with session.get(f"{site}/api/dudas/board?limit=5&window=today") as response:
@@ -128,7 +150,8 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         else:
             lines = [f"Leaderboard at {site} ({len(rows)} shown):"]
             lines.extend(f"#{r.get('rank')} {r.get('name')} — {r.get('score')} score, {r.get('height')}m" for r in rows)
-            await send_message(session, chat_id, "\n".join(lines))
+            mode = "ON" if chat_id in active else "OFF"
+            await send_message(session, chat_id, "\n".join(lines) + f"\nAutomation: {mode}")
     elif command == "/run":
         identity = identities.get(chat_id)
         if not identity:
@@ -142,6 +165,30 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         await send_message(session, chat_id, f"Submitted to {site}.\nIdentity: {identity}\nPrevious top: {result['previous_score']}\nNew score: {payload.get('score', 'reported by site')} (+at least {INCREMENT})\nHeight: {payload.get('height', 'reported by site')}m\nResult: {json.dumps(outcome)[:1200]}")
     else:
         await send_message(session, chat_id, "Unknown command. Use /start for help.")
+
+
+async def run_active_chats(session: aiohttp.ClientSession, state: dict[str, Any]) -> None:
+    import time
+    now = time.time()
+    for chat_id, settings in list(state.setdefault("active", {}).items()):
+        if float(settings.get("next_run", 0)) > now:
+            continue
+        identity = state.setdefault("identities", {}).get(chat_id)
+        if not identity:
+            state["active"].pop(chat_id, None)
+            continue
+        try:
+            site = site_for(state, chat_id)
+            result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT)
+            payload = result["payload"]
+            await send_message(session, chat_id, f"Automatic test result for {identity}: score {payload.get('score')} at {payload.get('height')}m. Previous top {result['previous_score']}.")
+            settings["next_run"] = now + ACTIVE_INTERVAL
+            save_state(state)
+        except Exception as exc:
+            LOG.exception("Active run failed for chat %s", chat_id)
+            await send_message(session, chat_id, f"Automatic run paused after an error: {exc}. Use /off, fix the site, then /on.")
+            state["active"].pop(chat_id, None)
+            save_state(state)
 
 
 async def run_bot() -> None:
@@ -164,6 +211,7 @@ async def run_bot() -> None:
                         chat_id = str(((update.get("message") or {}).get("chat") or {}).get("id", ""))
                         if chat_id and allowed(chat_id):
                             await send_message(session, chat_id, "Run failed; inspect the site contract and bot log.")
+                await run_active_chats(session, state)
             except asyncio.CancelledError:
                 raise
             except Exception:

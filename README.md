@@ -241,6 +241,28 @@ supplied its API contract. Judges can then select it in chat with `/site`, use
 `/inspect` to see the declared contract, enter `/identity`, and run `/run`.
 The bot should not be pointed at a public competition endpoint.
 
+The allowlist compares the URL hostname, not the full URL path. For example,
+if the judge sends `/site https://staging.example.com/game`, configure:
+
+```text
+AUTHORIZED_TEST_DOMAINS=staging.example.com
+```
+
+You may also explicitly allow all subdomains with a wildcard:
+
+```text
+AUTHORIZED_TEST_DOMAINS=*.example.com
+```
+
+Do not include a path in the allowlist. The bot reports the actual hostname
+and configured entries when rejecting a site. Localhost is always allowed for
+the local mock.
+
+After `/site`, `/inspect`, and `/identity`, send `/on`. The bot then performs
+the authorized test run repeatedly at `ACTIVE_INTERVAL_SECONDS` and sends
+feedback to Telegram until you send `/off`. An API or validation error pauses
+the active mode automatically, and the bot tells you why.
+
 ### Reference API compatibility check
 
 The public Dudas Jump API was checked without posting a score. Its leaderboard

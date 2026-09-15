@@ -16,9 +16,22 @@ import aiohttp
 
 
 def allowed_host(base_url: str) -> bool:
-    host = (urlparse(base_url).hostname or "").lower()
-    allowed = {x.strip().lower() for x in os.getenv("AUTHORIZED_TEST_DOMAINS", "").split(",") if x.strip()}
-    return host in {"127.0.0.1", "localhost", "::1"} or host in allowed
+    host = (urlparse(base_url).hostname or "").rstrip(".").lower()
+    allowed = []
+    for raw in os.getenv("AUTHORIZED_TEST_DOMAINS", "").split(","):
+        raw = raw.strip().lower().rstrip("/")
+        if not raw:
+            continue
+        if "://" in raw:
+            raw = urlparse(raw).hostname or ""
+        allowed.append(raw.rstrip("."))
+    if host in {"127.0.0.1", "localhost", "::1"}:
+        return True
+    return any(host == item or (item.startswith("*.") and host.endswith(item[1:])) for item in allowed)
+
+
+def allowlist_description() -> str:
+    return os.getenv("AUTHORIZED_TEST_DOMAINS", "(none; localhost only)")
 
 
 def dotted(data: Any, path: str) -> Any:
@@ -40,7 +53,8 @@ async def json_request(session: aiohttp.ClientSession, method: str, url: str, **
 
 async def inspect_site(base_url: str, requirements_path: str | None = None) -> dict[str, Any]:
     if not allowed_host(base_url):
-        raise ValueError("site host is not allowlisted; set AUTHORIZED_TEST_DOMAINS first")
+        host = urlparse(base_url).hostname or "(missing host)"
+        raise ValueError(f"host {host!r} is not allowlisted; configured entries: {allowlist_description()}")
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         path = requirements_path or os.getenv("REQUIREMENTS_PATH", "/api/dudas/requirements")
