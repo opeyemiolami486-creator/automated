@@ -219,7 +219,8 @@ Webcade. The bot supports:
 For an authorized site, `/schedule 100000 11:59:59 UTC` saves a proposal without
 reading the leaderboard and returns an ID such as `request-1`. Create as many
 requests as needed, then use `/schedules` to review every score, deadline, and
-status. Reply `/ack request-1` to obtain a fresh server token and schedule one
+status. Set `/identity` once before creating requests; the bot stores that same
+identity on every request, so you will not be asked for it again. Reply `/ack request-1` to obtain a fresh server token and schedule one
 request, or `/cancel request-1` to discard it. Use `/ack all` to activate every
 pending request at once; each request obtains its own token and runs as an
 independent background task, so requests do not queue behind one another. The

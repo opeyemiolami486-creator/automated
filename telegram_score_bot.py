@@ -177,6 +177,10 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         if len(parts) not in {2, 3}:
             await send_message(session, chat_id, "Usage: /schedule <target score> <HH:MM:SS> [UTC|LOCAL]\nExample: /schedule 100000 11:59:59 UTC")
             return
+        identity = identities.get(chat_id)
+        if not identity:
+            await send_message(session, chat_id, "Set your identity once with /identity <wallet or username>, then create the scheduled requests.")
+            return
         try:
             score = int(parts[0])
             if score < 0:
@@ -190,7 +194,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         while f"request-{number}" in owner_schedules:
             number += 1
         request_id = f"request-{number}"
-        owner_schedules[request_id] = {"score": score, "deadline": deadline.isoformat(), "status": "pending"}
+        owner_schedules[request_id] = {"score": score, "deadline": deadline.isoformat(), "identity": identity, "status": "pending"}
         save_state(state)
         await send_message(session, chat_id, f"Saved {request_id}\nProposed score: {score}\nSubmit deadline: {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')}\nNo leaderboard lookup will be used. Reply /ack {request_id} to obtain a token and schedule submission, or /cancel {request_id}.")
     elif command == "/schedules":
@@ -204,21 +208,24 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         await send_message(session, chat_id, "\n".join(lines))
     elif command in {"/ack", "/cancel"}:
         if command == "/ack" and argument.strip().lower() == "all":
-            identity = identities.get(chat_id)
             site = selected_site(state, chat_id)
-            if not identity or not site:
-                await send_message(session, chat_id, "Set /site and /identity before acknowledging scheduled submissions.")
+            if not site:
+                await send_message(session, chat_id, "Set /site before acknowledging scheduled submissions.")
                 return
             pending_ids = [request_id for request_id, item in owner_schedules.items() if item.get("status") == "pending"]
             if not pending_ids:
                 await send_message(session, chat_id, "There are no pending requests to activate.")
+                return
+            if any(not owner_schedules[request_id].get("identity") for request_id in pending_ids):
+                await send_message(session, chat_id, "One or more requests has no saved identity. Recreate it after using /identity.")
                 return
             for request_id in pending_ids:
                 owner_schedules[request_id]["status"] = "active"
             save_state(state)
             await send_message(session, chat_id, f"Activating {len(pending_ids)} requests simultaneously. Each will use its own token and deadline.")
             for request_id in pending_ids:
-                asyncio.create_task(execute_scheduled(session, state, chat_id, request_id, site, identity, owner_schedules[request_id]))
+                proposal = owner_schedules[request_id]
+                asyncio.create_task(execute_scheduled(session, state, chat_id, request_id, site, proposal["identity"], proposal))
             return
         request_id = argument.strip() or (next(iter(owner_schedules)) if len(owner_schedules) == 1 else "")
         proposal = owner_schedules.get(request_id)
@@ -236,10 +243,10 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         if proposal.get("status") != "pending":
             await send_message(session, chat_id, f"{request_id} is already {proposal.get('status')}.")
             return
-        identity = identities.get(chat_id)
+        identity = proposal.get("identity") or identities.get(chat_id)
         site = selected_site(state, chat_id)
         if not identity or not site:
-            await send_message(session, chat_id, "Set /site and /identity before acknowledging the scheduled submission.")
+            await send_message(session, chat_id, "This request has no saved identity or site. Recreate it after setting /site and /identity.")
             return
         proposal["status"] = "active"
         save_state(state)
