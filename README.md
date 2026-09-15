@@ -113,7 +113,13 @@ Keep credentials in environment variables or your host’s secret store. Do not 
 ```bash
 python -m py_compile answer_automation.py
 python test_answer_automation.py
+python test_mock_api.py
 ```
+
+`test_mock_api.py` verifies the requirements contract, empty leaderboard,
+server-issued tokens, valid score submission, millisecond timestamps, token
+replay rejection, missing-field rejection, invalid-token rejection, and
+leaderboard ordering.
 
 ## Local Webcade-style mock and higher-score test
 
@@ -244,6 +250,19 @@ For a team-owned test website, add only its hostname to
 supplied its API contract. Judges can then select it in chat with `/site`, use
 `/inspect` to see the declared contract, enter `/identity`, and run `/run`.
 The bot should not be pointed at a public competition endpoint.
+
+There is no hard-coded `.com` restriction: any team-provided test hostname can
+be onboarded by adding its exact host to `AUTHORIZED_TEST_DOMAINS`, for
+example:
+
+```text
+AUTHORIZED_TEST_DOMAINS=team-a.com,staging.team-b.net
+```
+
+This explicit per-host onboarding is intentional. Accepting every arbitrary
+URL would allow a typo or an untrusted chat participant to make the bot send
+scores to a public or unrelated service. If the team changes domains, update
+the environment variable and restart the bot; no code change is required.
 
 The allowlist compares the URL hostname, not the full URL path. For example,
 if the judge sends `/site https://staging.example.com/game`, configure:

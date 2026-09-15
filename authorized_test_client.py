@@ -93,6 +93,8 @@ async def run_site(base_url: str, identity: str, increment: int = 50000, min_hei
     identity_field = identity_spec.get("field")
     token_field = token_spec.get("field", "token")
     token_path = token_spec.get("json_path", "token")
+    if not isinstance(fields, dict):
+        fields = {name: name for name in (fields if isinstance(fields, list) else ["score", "height"])}
     if not isinstance(identity_field, str):
         raise ValueError("site requirements must declare an identity field")
     timeout = aiohttp.ClientTimeout(total=20)
