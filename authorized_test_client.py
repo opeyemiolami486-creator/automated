@@ -12,6 +12,7 @@ import os
 import random
 import asyncio
 import math
+from datetime import datetime
 from urllib.parse import urlparse
 from typing import Any, Awaitable, Callable
 
@@ -236,3 +237,58 @@ async def run_site(
                 payload[fields[logical]] = max(default, score // (1000 if logical == "coins" else 5000))
         result = await json_request(session, "POST", endpoint_url(base_url, endpoints["submit"]), json=payload)
         return {"previous_score": current, "identity": identity, "payload": payload, "result": result}
+
+
+async def submit_at_deadline(
+    base_url: str,
+    identity: str,
+    score: int,
+    deadline: datetime,
+    height: int = 1,
+    on_wait: Callable[[float], Awaitable[None]] | None = None,
+) -> dict[str, Any]:
+    """Submit a user-confirmed score at an exact local wall-clock deadline.
+
+    This deliberately does not read the leaderboard. The run token is acquired
+    after acknowledgement, then the client waits until ``deadline`` before
+    posting. The server remains authoritative about whether the elapsed time is
+    valid.
+    """
+    if score < 0 or height <= 0:
+        raise ValueError("score must be non-negative and height must be positive")
+    if deadline.tzinfo is None:
+        raise ValueError("deadline must be timezone-aware")
+    requirements = await inspect_site(base_url)
+    endpoints = requirements.get("endpoints", {})
+    identity_spec = requirements.get("identity", {})
+    token_spec = requirements.get("token", {})
+    fields = requirements.get("score_fields", {})
+    if not isinstance(fields, dict):
+        fields = {name: name for name in (fields if isinstance(fields, list) else ["score", "height"])}
+    identity_field = identity_spec.get("field")
+    if not isinstance(identity_field, str) or not isinstance(endpoints.get("start"), str) or not isinstance(endpoints.get("submit"), str):
+        raise ValueError("site requirements must declare identity, start, and submit fields")
+    token_field = token_spec.get("field", "token")
+    token_path = token_spec.get("json_path", "token")
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
+        start = await json_request(session, "POST", endpoint_url(base_url, endpoints["start"]), json={})
+        token = dotted(start, token_path)
+        if not isinstance(token, str) or not token:
+            raise ValueError("start response did not contain the declared token")
+        remaining = (deadline - datetime.now(deadline.tzinfo)).total_seconds()
+        if remaining <= 0:
+            raise ValueError("deadline must be in the future")
+        if on_wait is not None:
+            await on_wait(remaining)
+        await asyncio.sleep(remaining)
+        payload: dict[str, Any] = {
+            identity_field: identity,
+            token_field: token,
+            fields.get("score", "score"): score,
+            fields.get("height", "height"): height,
+        }
+        for logical, default in (("coins", 0), ("toads", 0), ("combo", 1)):
+            if logical in fields:
+                payload[fields[logical]] = max(default, score // (1000 if logical == "coins" else 5000))
+        result = await json_request(session, "POST", endpoint_url(base_url, endpoints["submit"]), json=payload)
+        return {"identity": identity, "payload": payload, "result": result, "deadline": deadline.isoformat()}
