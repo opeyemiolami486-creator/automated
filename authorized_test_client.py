@@ -307,6 +307,7 @@ async def submit_at_deadline(
         if on_wait is not None:
             await on_wait(remaining, compensation)
         await asyncio.sleep(max(0.0, remaining - compensation))
+        score = max(score, height * 300)
         payload: dict[str, Any] = {
             identity_field: identity,
             token_field: token,
