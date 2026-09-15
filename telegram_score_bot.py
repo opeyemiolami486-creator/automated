@@ -80,6 +80,14 @@ def site_for(state: dict[str, Any], chat_id: str) -> str:
     return value.rstrip("/") or BASE_URL
 
 
+def selected_site(state: dict[str, Any], chat_id: str) -> str | None:
+    """Return the explicitly selected site, not the localhost default."""
+    value = state.setdefault("sites", {}).get(chat_id)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip().rstrip("/")
+
+
 async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], update: dict[str, Any]) -> None:
     message = update.get("message") or update.get("edited_message")
     if not message or not message.get("text"):
@@ -177,7 +185,10 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         if not identity:
             await send_message(session, chat_id, "No identity saved. Send /identity <public wallet address or username> first.")
             return
-        site = site_for(state, chat_id)
+        site = selected_site(state, chat_id)
+        if not site:
+            await send_message(session, chat_id, "No test site selected. Send /site https://your-deployed-test-site first; the localhost mock is not used automatically.")
+            return
         await send_message(session, chat_id, "Inspecting the site API, requesting a fresh server token, and running the authorized test…")
         result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT)
         payload = result["payload"]
