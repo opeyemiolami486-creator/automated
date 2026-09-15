@@ -178,7 +178,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             await send_message(session, chat_id, "No identity saved. Send /identity <public wallet address or username> first.")
             return
         site = site_for(state, chat_id)
-        await send_message(session, chat_id, "Inspecting requirements, requesting a fresh server token, and running the authorized test…")
+        await send_message(session, chat_id, "Inspecting the site API, requesting a fresh server token, and running the authorized test…")
         result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT)
         payload = result["payload"]
         outcome = result["result"]
@@ -228,11 +228,12 @@ async def run_bot() -> None:
                     offset = max(offset, int(update["update_id"]) + 1)
                     try:
                         await handle_update(session, state, update)
-                    except Exception:
+                    except Exception as exc:
                         LOG.exception("Update failed")
                         chat_id = str(((update.get("message") or {}).get("chat") or {}).get("id", ""))
                         if chat_id and allowed(chat_id):
-                            await send_message(session, chat_id, "Run failed; inspect the site contract and bot log.")
+                            detail = f"{type(exc).__name__}: {exc}".strip()
+                            await send_message(session, chat_id, f"Run failed: {detail[:2500]}")
                 await run_active_chats(session, state)
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
