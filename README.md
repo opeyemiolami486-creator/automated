@@ -331,11 +331,22 @@ JavaScript, POST to discovered endpoints, bypass authentication, or infer a
 request body. The team must confirm the candidates and publish the requirements
 contract before `/on` can submit test scores.
 
-After `/site`, `/inspect`, and `/identity`, send `/on`. The bot then performs
-the authorized test run repeatedly at `ACTIVE_INTERVAL_SECONDS` (default
-`0.5` seconds) and sends
-feedback to Telegram until you send `/off`. An API or validation error pauses
-the active mode automatically, and the bot tells you why.
+After `/site`, `/inspect`, and `/identity`, send `/on`. The bot then performs the authorized test run repeatedly at `ACTIVE_INTERVAL_SECONDS` (default `0.5` seconds) and sends
+feedback to Telegram until you send `/off`. An API or validation error pauses the
+active mode automatically, and the bot tells you why.
+
+### Low-latency operation
+
+The bot uses Telegram long polling with a 25-second server wait, so a command is
+received immediately without a fixed polling sleep or busy-loop overhead. Command
+handlers run independently of the polling loop, allowing Telegram acknowledgements
+and other chats to remain responsive while a test run waits for its authorized
+server timing. Score runs reuse one `aiohttp` connection for the leaderboard, token,
+and submission requests; the leaderboard and token requests are issued in parallel
+when the site contract permits both. The declared requirements contract is cached
+for 30 seconds by default, configurable with `REQUIREMENTS_CACHE_SECONDS`, which
+removes repeated contract-discovery requests without weakening host allowlisting or
+server-issued-token validation.
 
 ### Reference API compatibility check
 

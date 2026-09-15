@@ -20,6 +20,9 @@ from typing import Any, Awaitable, Callable
 import aiohttp
 
 
+_REQUIREMENTS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
 def allowed_host(base_url: str) -> bool:
     host = (urlparse(base_url).hostname or "").rstrip(".").lower()
     allowed = []
@@ -117,6 +120,11 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
         host = urlparse(base_url).hostname or "(missing host)"
         raise ValueError(f"host {host!r} is not allowlisted; configured entries: {allowlist_description()}")
     timeout = aiohttp.ClientTimeout(total=20)
+    cache_key = f"{base_url.rstrip('/')}|{requirements_path or os.getenv('REQUIREMENTS_PATH', '')}"
+    cache_seconds = _positive_number(os.getenv("REQUIREMENTS_CACHE_SECONDS", "30")) or 0.0
+    cached = _REQUIREMENTS_CACHE.get(cache_key)
+    if cached and cache_seconds > 0 and time.monotonic() - cached[0] < cache_seconds:
+        return cached[1]
     async with aiohttp.ClientSession(timeout=timeout) as session:
         parsed = urlparse(base_url.rstrip("/"))
         configured = requirements_path or os.getenv("REQUIREMENTS_PATH")
@@ -139,13 +147,16 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
         for path in dict.fromkeys(candidates):
             url = path if path.startswith(("http://", "https://")) else f"{base_url.rstrip('/')}/{path.lstrip('/')}"
             try:
-                return await json_request(session, "GET", url)
+                result = await json_request(session, "GET", url)
+                if isinstance(result, dict) and cache_seconds > 0:
+                    _REQUIREMENTS_CACHE[cache_key] = (time.monotonic(), result)
+                return result
             except Exception as exc:
                 errors.append(f"{url}: {exc}")
         # The requirements document is optional. This fallback keeps judges
         # able to test a compatible site that exposes the conventional API but
         # does not publish a separate contract document.
-        return {
+        result = {
             "contract_source": "inferred-conventional-endpoints",
             "contract_optional": True,
             "endpoints": {
@@ -164,6 +175,9 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
             },
             "discovery_errors": errors,
         }
+        if cache_seconds > 0:
+            _REQUIREMENTS_CACHE[cache_key] = (time.monotonic(), result)
+        return result
 
 
 async def run_site(
@@ -194,10 +208,12 @@ async def run_site(
         raise ValueError("site requirements must declare an identity field")
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        board = await json_request(session, "GET", endpoint_url(base_url, endpoints["leaderboard"]))
+        board, start = await asyncio.gather(
+            json_request(session, "GET", endpoint_url(base_url, endpoints["leaderboard"])),
+            json_request(session, "POST", endpoint_url(base_url, endpoints["start"]), json={}),
+        )
         rows = board.get("list", []) if isinstance(board, dict) else board
         current = int(rows[0].get(fields.get("score", "score"), 0)) if rows else 0
-        start = await json_request(session, "POST", endpoint_url(base_url, endpoints["start"]), json={})
         token = dotted(start, token_path)
         if not isinstance(token, str) or not token:
             raise ValueError("start response did not contain the declared token")

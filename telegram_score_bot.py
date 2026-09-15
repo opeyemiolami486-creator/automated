@@ -360,6 +360,19 @@ async def execute_scheduled(session: aiohttp.ClientSession, state: dict[str, Any
         await send_message(session, chat_id, f"Scheduled submission failed: {type(exc).__name__}: {exc}")
 
 
+async def process_update(session: aiohttp.ClientSession, state: dict[str, Any], update: dict[str, Any]) -> None:
+    try:
+        await handle_update(session, state, update)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        LOG.exception("Update failed")
+        chat_id = str(((update.get("message") or {}).get("chat") or {}).get("id", ""))
+        if chat_id and allowed(chat_id):
+            detail = f"{type(exc).__name__}: {exc}".strip()
+            await send_message(session, chat_id, f"Run failed: {detail[:2500]}")
+
+
 async def run_bot() -> None:
     state = load_state()
     offset = 0
@@ -367,24 +380,20 @@ async def run_bot() -> None:
     async with aiohttp.ClientSession(timeout=timeout) as session:
         await telegram_call(session, "deleteWebhook", {"drop_pending_updates": "true"})
         LOG.info("Telegram bot active; default site=%s", BASE_URL)
+        command_tasks: set[asyncio.Task[None]] = set()
         while True:
-            # Short polling keeps active test runs close to the configured
-            # 0.5-second cadence instead of waiting on a long Telegram poll.
-            params = {"timeout": 0, "offset": offset, "allowed_updates": json.dumps(["message"])}
+            # Long polling removes the fixed half-second command latency while
+            # keeping one persistent HTTPS connection instead of busy polling.
+            params = {"timeout": 25, "offset": offset, "allowed_updates": json.dumps(["message"])}
             try:
                 updates = await telegram_call(session, "getUpdates", params)
                 for update in updates or []:
                     offset = max(offset, int(update["update_id"]) + 1)
-                    try:
-                        await handle_update(session, state, update)
-                    except Exception as exc:
-                        LOG.exception("Update failed")
-                        chat_id = str(((update.get("message") or {}).get("chat") or {}).get("id", ""))
-                        if chat_id and allowed(chat_id):
-                            detail = f"{type(exc).__name__}: {exc}".strip()
-                            await send_message(session, chat_id, f"Run failed: {detail[:2500]}")
+                    task = asyncio.create_task(process_update(session, state, update))
+                    command_tasks.add(task)
+                    task.add_done_callback(command_tasks.discard)
+                    await asyncio.sleep(0)
                 await run_active_chats(session, state)
-                await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 raise
             except RuntimeError as exc:
