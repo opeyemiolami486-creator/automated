@@ -139,10 +139,10 @@ python mock_score_automation.py --base-url http://127.0.0.1:8080 --increment 100
 
 The client first reads the local top score, requests a fresh one-use run token,
 chooses a realistic reference-style climb height from **1,900 through 2,500**,
-calculates a higher score proportional to that height, and submits it to the
+calculates a score at least **50,000 above the current local top score**, and submits it to the
 localhost mock. You can customize the range with `--min-height` and
 `--max-height`, but both values must remain positive and the minimum cannot
-exceed the maximum. The mock
+exceed the maximum. The `--increment` value cannot be below 50,000. The mock
 validates token expiry and one-time use, validates score fields, records the
 server-side elapsed run time and millisecond submission timestamp, and returns
 the resulting rank. It persists local data in `mock_webcade_state.json`, which
@@ -150,6 +150,29 @@ is ignored by Git.
 
 This test path is deliberately restricted to localhost and never sends the
 score to Webcade or any public leaderboard.
+
+## Adapting to a team-owned test website
+
+The worker can preserve a different team API’s submission format only when the
+team provides its contract. Configure the leaderboard URL, score field, start
+endpoint, token JSON path, token field, and any required identity fields from
+the team’s documentation. The program must not infer or invent undocumented
+fields, bypass a login, or replay a browser credential. A safe integration
+should confirm that the team’s start endpoint issues a one-use token and that
+the submission endpoint validates it server-side.
+
+At minimum, provide:
+
+```text
+GET  leaderboard endpoint and response example
+POST run-start endpoint and token response example
+POST score endpoint and accepted request example
+```
+
+Once those examples are available, the adapter can read the current score,
+produce a test value at least 50,000 higher with a separate modified-height
+field, and serialize the exact payload shape required by that test site. Until
+then, the committed higher-score workflow remains localhost-only.
 
 ## Deployment
 

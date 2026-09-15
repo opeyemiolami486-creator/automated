@@ -59,12 +59,12 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default=os.getenv("MOCK_BASE_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--address", default=os.getenv("MOCK_ADDRESS", "hackathon-local-player"))
-    parser.add_argument("--increment", type=int, default=int(os.getenv("MOCK_SCORE_INCREMENT", "1000")))
+    parser.add_argument("--increment", type=int, default=int(os.getenv("MOCK_SCORE_INCREMENT", "50000")))
     parser.add_argument("--min-height", type=int, default=int(os.getenv("MOCK_MIN_HEIGHT", "1900")))
     parser.add_argument("--max-height", type=int, default=int(os.getenv("MOCK_MAX_HEIGHT", "2500")))
     args = parser.parse_args()
-    if args.increment <= 0:
-        raise ValueError("increment must be greater than 0")
+    if args.increment < 50000:
+        raise ValueError("increment must be at least 50000")
     if not 0 < args.min_height <= args.max_height:
         raise ValueError("height range must satisfy 0 < min-height <= max-height")
     result = await submit_higher_score(
