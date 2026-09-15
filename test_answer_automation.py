@@ -63,6 +63,15 @@ def test_token_extraction_shapes():
     assert worker.extract_token({"run_token": "alternate-token"}) == "alternate-token"
 
 
+def test_timing_metadata_and_board_factor():
+    from authorized_test_client import derive_time_factor, extract_timing
+
+    assert extract_timing({"timeFactor": 0.15}) == (None, 0.15)
+    assert extract_timing({"timing": {"allowed_seconds": 12}}) == (12.0, None)
+    assert extract_timing({"expires_in": 300}) == (None, None)
+    assert derive_time_factor({"list": [{"height": 2000, "secs": 320}, {"height": 1000, "secs": 180}]}) == 0.16
+
+
 def test_allowlist_normalizes_domains():
     from authorized_test_client import allowed_host
     old = os.environ.get("AUTHORIZED_TEST_DOMAINS")

@@ -339,12 +339,22 @@ python telegram_score_bot.py
    TELEGRAM_BOT_TOKEN=<BotFather token>
    TELEGRAM_ALLOWED_CHAT_ID=<your private Telegram chat id>
    AUTHORIZED_TEST_DOMAINS=<team test hostname>
-   ACTIVE_INTERVAL_SECONDS=0.5
-   MOCK_SCORE_INCREMENT=50000
-   MOCK_MIN_HEIGHT=1900
-   MOCK_MAX_HEIGHT=2500
-   LOG_LEVEL=INFO
-   ```
+ACTIVE_INTERVAL_SECONDS=0.5
+MOCK_SCORE_INCREMENT=50000
+MOCK_MIN_HEIGHT=1900
+MOCK_MAX_HEIGHT=2500
+LOG_LEVEL=INFO
+```
+
+The client no longer assumes that every run lasts five minutes. After requesting
+a run token, it first uses an explicit minimum duration or time factor returned
+by the selected test site's start response or requirements contract. If neither
+is provided, it derives a conservative seconds-per-height factor from completed
+leaderboard runs and waits only for the selected height's allowed duration. A
+small `TIMING_SAFETY_MARGIN_SECONDS` (default `0.25`) protects against scheduler
+jitter. For a site whose timing contract cannot be discovered automatically,
+set `AUTHORIZED_PLAY_DURATION_SECONDS` explicitly; this remains an override for
+authorized test sites, not a way to bypass a server's validation.
 
    Set `MOCK_BASE_URL` only if the team site is using the generic adapter as
    its configured default; judges can otherwise select the site with `/site`.

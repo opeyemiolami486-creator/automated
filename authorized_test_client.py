@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import random
 import asyncio
+import math
 from urllib.parse import urlparse
 from typing import Any
 
@@ -45,6 +46,48 @@ def dotted(data: Any, path: str) -> Any:
             return None
         value = value.get(part)
     return value
+
+
+def _positive_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def extract_timing(data: Any) -> tuple[float | None, float | None]:
+    """Extract an explicit minimum duration or seconds-per-height factor."""
+    if not isinstance(data, dict):
+        return None, None
+    duration_keys = (
+        "allowed_seconds", "allowed_time_seconds", "minimum_seconds",
+        "min_duration_seconds", "minDurationSeconds", "minimumDurationSeconds",
+    )
+    factor_keys = (
+        "time_factor", "timeFactor", "seconds_per_height", "secondsPerHeight",
+        "min_seconds_per_height", "minSecondsPerHeight",
+    )
+    duration = next((_positive_number(data.get(k)) for k in duration_keys if _positive_number(data.get(k)) is not None), None)
+    factor = next((_positive_number(data.get(k)) for k in factor_keys if _positive_number(data.get(k)) is not None), None)
+    for key in ("timing", "rules", "game", "run", "data"):
+        nested_duration, nested_factor = extract_timing(data.get(key))
+        duration = duration or nested_duration
+        factor = factor or nested_factor
+    return duration, factor
+
+
+def derive_time_factor(board: Any) -> float | None:
+    """Use the fastest completed public run as a conservative speed baseline."""
+    rows = board.get("list", []) if isinstance(board, dict) else []
+    ratios = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        height = _positive_number(row.get("height"))
+        seconds = _positive_number(row.get("secs"))
+        if height is not None and seconds is not None:
+            ratios.append(seconds / height)
+    return min(ratios) if ratios else None
 
 
 def endpoint_url(base_url: str, endpoint: str) -> str:
@@ -121,9 +164,9 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
         }
 
 
-async def run_site(base_url: str, identity: str, increment: int = 50000, min_height: int = 1900, max_height: int = 2500, play_duration_seconds: float = 300.0) -> dict[str, Any]:
-    if increment < 0 or not 0 < min_height <= max_height or play_duration_seconds <= 0:
-        raise ValueError("score increment must be non-negative, play duration must be greater than 0, and height range must be positive")
+async def run_site(base_url: str, identity: str, increment: int = 50000, min_height: int = 1900, max_height: int = 2500, play_duration_seconds: float | None = None) -> dict[str, Any]:
+    if increment < 0 or not 0 < min_height <= max_height or (play_duration_seconds is not None and play_duration_seconds <= 0):
+        raise ValueError("score increment must be non-negative, optional play duration must be greater than 0, and height range must be positive")
     requirements = await inspect_site(base_url)
     endpoints = requirements.get("endpoints", {})
     identity_spec = requirements.get("identity", {})
@@ -148,9 +191,21 @@ async def run_site(base_url: str, identity: str, increment: int = 50000, min_hei
         token = dotted(start, token_path)
         if not isinstance(token, str) or not token:
             raise ValueError("start response did not contain the declared token")
-        if play_duration_seconds:
-            await asyncio.sleep(play_duration_seconds)
         height = random.randint(min_height, max_height)
+        duration, factor = extract_timing(start)
+        if duration is None and factor is None:
+            duration, factor = extract_timing(requirements.get("timing"))
+        factor = factor or derive_time_factor(board)
+        if play_duration_seconds is not None:
+            wait_seconds = play_duration_seconds
+        elif duration is not None:
+            wait_seconds = duration
+        elif factor is not None:
+            wait_seconds = height * factor
+        else:
+            raise ValueError("site did not declare or expose an allowed run time; set AUTHORIZED_PLAY_DURATION_SECONDS or provide timing metadata")
+        safety_margin = _positive_number(os.getenv("TIMING_SAFETY_MARGIN_SECONDS", "0.25")) or 0.0
+        await asyncio.sleep(wait_seconds + safety_margin)
         score = max(current + increment, height * 300)
         payload: dict[str, Any] = {
             identity_field: identity,
