@@ -62,7 +62,13 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
         parsed = urlparse(base_url.rstrip("/"))
         configured = requirements_path or os.getenv("REQUIREMENTS_PATH")
         if configured:
-            candidates = [configured]
+            configured = configured.strip()
+            if configured.rstrip("/") == parsed.path.rstrip("/"):
+                configured = configured.rstrip("/") + "/requirements"
+            if configured.startswith(("http://", "https://")):
+                candidates = [configured]
+            else:
+                candidates = [f"{parsed.scheme}://{parsed.netloc}/{configured.lstrip('/')}" ]
         else:
             prefix = parsed.path.rstrip("/")
             candidates = []

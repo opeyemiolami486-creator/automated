@@ -348,8 +348,11 @@ python telegram_score_bot.py
 
    Set `MOCK_BASE_URL` only if the team site is using the generic adapter as
    its configured default; judges can otherwise select the site with `/site`.
-   If the team’s requirements URL is non-standard, also set
-   `REQUIREMENTS_PATH`.
+If the team’s requirements URL is non-standard, also set
+   `REQUIREMENTS_PATH` to the actual JSON contract endpoint, for example
+   `/dudasjump/play/requirements`. Do not set it to the game page itself such
+   as `/dudasjump/play`; if that value is present, the bot normalizes it to
+   `/dudasjump/play/requirements`.
 
 4. Confirm the service is a **worker**, not a web service. It does not need a
    public port.
