@@ -132,7 +132,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     owner_schedules = schedules.setdefault(chat_id, {})
 
     if command in {"/start", "/help"}:
-        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <default identity>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS> [UTC|LOCAL] [identity]\n/schedules\n/ack <request-id> or /ack all\n/cancel <request-id>\n/clear")
+        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <raw public address>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS> [UTC|LOCAL] [raw-address]\n/schedules\n/ack <request-id> or /ack all\n/cancel <request-id>\n/clear")
     elif command == "/site":
         value = argument.strip().rstrip("/")
         if not value.startswith(("http://", "https://")):
@@ -160,7 +160,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     elif command == "/identity":
         value = argument.strip()
         if not value:
-            await send_message(session, chat_id, "Usage: /identity <public wallet address or username>")
+            await send_message(session, chat_id, "Usage: /identity <raw public address>")
         else:
             identities[chat_id] = value
             save_state(state)
@@ -194,7 +194,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             return
         identity = request_identity or identities.get(chat_id)
         if not identity:
-            await send_message(session, chat_id, "Set a default with /identity, or specify an identity at the end of /schedule.")
+            await send_message(session, chat_id, "Set a default raw address with /identity, or specify a raw address at the end of /schedule.")
             return
         number = 1
         while f"request-{number}" in owner_schedules:

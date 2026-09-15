@@ -203,7 +203,7 @@ Webcade. The bot supports:
 
 ```text
 /start                         show help
-/identity <wallet or username> save the public run identity
+  /identity <raw public address>  save the raw public run address
 /status                        read the local leaderboard
 /on                            keep running until /off
   /off                           stop automatic runs
@@ -219,10 +219,12 @@ Webcade. The bot supports:
 For an authorized site, `/schedule 100000 11:59:59 UTC` saves a proposal without
 reading the leaderboard and returns an ID such as `request-1`. Create as many
 requests as needed, then use `/schedules` to review every score, deadline, and
-status. Set `/identity default-player` once before creating requests; the bot
+status. Set `/identity RAW_PUBLIC_ADDRESS` once before creating requests; the bot
 stores that identity on each request when no identity is supplied. To use a
 different identity for one request, add it at the end, for example
-`/schedule 250000 12:05:00 UTC player-two`. Reply `/ack request-1` to obtain a fresh server token and schedule one
+`/schedule 250000 12:05:00 UTC RAW_SECOND_ADDRESS`. The bot stores and submits
+the address exactly as entered; it does not shorten, hash, or replace it.
+Reply `/ack request-1` to obtain a fresh server token and schedule one
 request, or `/cancel request-1` to discard it. Use `/ack all` to activate every
 pending request at once; each request obtains its own token and runs as an
 independent background task, so requests do not queue behind one another. The
