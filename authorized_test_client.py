@@ -279,6 +279,7 @@ async def submit_at_deadline(
     score: int,
     deadline: datetime,
     height: int = 1,
+    max_height: int | None = None,
     on_wait: Callable[[float, float], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """Submit a user-confirmed score at an exact local wall-clock deadline.
@@ -327,7 +328,7 @@ async def submit_at_deadline(
         score_rule = requirements.get("score_rules", {})
         configured_ratio = score_rule.get("min_score_per_height") if isinstance(score_rule, dict) else None
         score_per_height = int(configured_ratio) if isinstance(configured_ratio, (int, float)) and configured_ratio > 0 else None
-        height = height_for_score(score, preferred_min=height, preferred_max=height, score_per_height=score_per_height)
+        height = height_for_score(score, preferred_min=height, preferred_max=max_height or height, score_per_height=score_per_height)
         payload: dict[str, Any] = {
             identity_field: identity,
             token_field: token,

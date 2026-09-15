@@ -346,7 +346,7 @@ async def execute_scheduled(session: aiohttp.ClientSession, state: dict[str, Any
         async def wait_status(seconds: float, compensation: float) -> None:
             await send_message(session, chat_id, f"Token acquired; measured latency compensation {compensation * 1000:.0f}ms; submitting toward {deadline.strftime('%H:%M:%S')}…")
 
-        result = await submit_at_deadline(site, identity, int(proposal["score"]), deadline, MIN_HEIGHT, wait_status)
+        result = await submit_at_deadline(site, identity, int(proposal["score"]), deadline, MIN_HEIGHT, MAX_HEIGHT, wait_status)
         payload = result["payload"]
         proposal["status"] = "submitted"
         proposal["result"] = result["result"]
