@@ -235,6 +235,13 @@ async def run_bot() -> None:
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 raise
+            except RuntimeError as exc:
+                if "error_code': 409" in str(exc) or 'error_code": 409' in str(exc):
+                    LOG.warning("Another process is polling this Telegram bot token; retrying in 15 seconds")
+                    await asyncio.sleep(15)
+                else:
+                    LOG.exception("Telegram polling failed; retrying")
+                    await asyncio.sleep(3)
             except Exception:
                 LOG.exception("Telegram polling failed; retrying")
                 await asyncio.sleep(3)
