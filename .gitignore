@@ -1,0 +1,7 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+answer_automation_state.json
+leaderboard_state.json
+answers.json
