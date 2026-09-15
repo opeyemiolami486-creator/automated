@@ -291,6 +291,12 @@ start, and submit endpoints are relative to it. If discovery fails, the bot
 reports every URL it tried so the team can provide `REQUIREMENTS_PATH` or the
 correct API contract.
 
+`/inspect` now performs detailed contract validation before activation. It
+checks the declared endpoint paths, identity field, token field, token JSON
+path, score field, height field, leaderboard response shape, and run-token
+response shape. `/on` is refused until those checks pass. The start probe only
+obtains a token; it never submits a score.
+
 `/discover` performs a read-only scan of the selected page and linked
 JavaScript files. It reports likely leaderboard, run-token, and submission URLs
 found in strings such as `fetch()` calls. It does not execute the site’s

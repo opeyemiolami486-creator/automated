@@ -28,6 +28,7 @@ import aiohttp
 
 from authorized_test_client import allowed_host, inspect_site, run_site
 from site_code_discovery import discover
+from site_contract import validate_contract
 
 LOG = logging.getLogger("telegram_score_bot")
 STATE_FILE = Path(os.getenv("TELEGRAM_STATE_FILE", "telegram_bot_state.json"))
@@ -107,8 +108,8 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     elif command == "/inspect":
         site = site_for(state, chat_id)
         try:
-            requirements = await inspect_site(site)
-            await send_message(session, chat_id, "Requirements found for " + site + ":\n" + json.dumps(requirements, indent=2)[:3500])
+            report = await validate_contract(site)
+            await send_message(session, chat_id, "Contract validation for " + site + ":\n" + json.dumps(report, indent=2)[:3800])
         except Exception as exc:
             await send_message(session, chat_id, f"Could not inspect {site}: {exc}")
     elif command == "/discover":
@@ -138,7 +139,10 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             return
         site = site_for(state, chat_id)
         try:
-            await inspect_site(site)
+            report = await validate_contract(site)
+            if not report.get("ready_for_run"):
+                await send_message(session, chat_id, "Automation not activated; contract validation failed:\n" + json.dumps(report, indent=2)[:3000])
+                return
         except Exception as exc:
             await send_message(session, chat_id, f"Cannot activate this site: {exc}")
             return
