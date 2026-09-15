@@ -263,6 +263,14 @@ full `https://` URLs, optional ports, and explicit `*.` subdomain wildcards.
 It reports the actual hostname and configured entries when rejecting a site.
 Localhost is always allowed for the local mock.
 
+The `/site` URL may include a test path, for example
+`https://team-example.com/leaderboard`. Requirements discovery now tries the
+path-aware location first (`/leaderboard/requirements`), then common root
+locations. The selected path is preserved when the declared leaderboard,
+start, and submit endpoints are relative to it. If discovery fails, the bot
+reports every URL it tried so the team can provide `REQUIREMENTS_PATH` or the
+correct API contract.
+
 After `/site`, `/inspect`, and `/identity`, send `/on`. The bot then performs
 the authorized test run repeatedly at `ACTIVE_INTERVAL_SECONDS` (default
 `0.5` seconds) and sends

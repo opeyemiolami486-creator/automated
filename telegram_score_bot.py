@@ -141,9 +141,13 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         await send_message(session, chat_id, "Automation OFF. No more automatic test submissions will run for this chat.")
     elif command == "/status":
         site = site_for(state, chat_id)
-        async with session.get(f"{site}/api/dudas/board?limit=5&window=today") as response:
+        requirements = await inspect_site(site)
+        leaderboard_path = requirements.get("endpoints", {}).get("leaderboard")
+        if not isinstance(leaderboard_path, str) or not leaderboard_path.startswith("/"):
+            raise ValueError("site requirements do not declare a relative leaderboard endpoint")
+        async with session.get(f"{site.rstrip('/')}{leaderboard_path}") as response:
             response.raise_for_status()
-            board = await response.json()
+            board = await response.json(content_type=None)
         rows = board.get("list", [])
         if not rows:
             await send_message(session, chat_id, f"Leaderboard at {site} is empty.")

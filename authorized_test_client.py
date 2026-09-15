@@ -59,8 +59,24 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
         raise ValueError(f"host {host!r} is not allowlisted; configured entries: {allowlist_description()}")
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        path = requirements_path or os.getenv("REQUIREMENTS_PATH", "/api/dudas/requirements")
-        return await json_request(session, "GET", f"{base_url.rstrip('/')}{path}")
+        parsed = urlparse(base_url.rstrip("/"))
+        configured = requirements_path or os.getenv("REQUIREMENTS_PATH")
+        if configured:
+            candidates = [configured]
+        else:
+            prefix = parsed.path.rstrip("/")
+            candidates = []
+            if prefix:
+                candidates.append(prefix + "/requirements")
+            candidates.extend(["/requirements", "/api/requirements", "/api/dudas/requirements"])
+        errors = []
+        for path in dict.fromkeys(candidates):
+            url = f"{base_url.rstrip('/')}{path}"
+            try:
+                return await json_request(session, "GET", url)
+            except Exception as exc:
+                errors.append(f"{url}: {exc}")
+        raise ValueError("could not find a JSON requirements contract; tried " + " | ".join(errors))
 
 
 async def run_site(base_url: str, identity: str, increment: int = 50000, min_height: int = 1900, max_height: int = 2500) -> dict[str, Any]:
