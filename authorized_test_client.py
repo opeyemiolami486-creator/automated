@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import random
+import asyncio
 from urllib.parse import urlparse
 from typing import Any
 
@@ -120,9 +121,9 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
         }
 
 
-async def run_site(base_url: str, identity: str, increment: int = 50000, min_height: int = 1900, max_height: int = 2500) -> dict[str, Any]:
-    if increment < 0 or not 0 < min_height <= max_height:
-        raise ValueError("score increment must be non-negative and height range must be positive")
+async def run_site(base_url: str, identity: str, increment: int = 50000, min_height: int = 1900, max_height: int = 2500, play_duration_seconds: float = 0.0) -> dict[str, Any]:
+    if increment < 0 or not 0 < min_height <= max_height or play_duration_seconds < 0:
+        raise ValueError("score increment and play duration must be non-negative; height range must be positive")
     requirements = await inspect_site(base_url)
     endpoints = requirements.get("endpoints", {})
     identity_spec = requirements.get("identity", {})
@@ -147,6 +148,8 @@ async def run_site(base_url: str, identity: str, increment: int = 50000, min_hei
         token = dotted(start, token_path)
         if not isinstance(token, str) or not token:
             raise ValueError("start response did not contain the declared token")
+        if play_duration_seconds:
+            await asyncio.sleep(play_duration_seconds)
         height = random.randint(min_height, max_height)
         score = max(current + increment, height * 300)
         payload: dict[str, Any] = {

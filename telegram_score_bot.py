@@ -39,6 +39,7 @@ ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID")
 MIN_HEIGHT = int(os.getenv("MOCK_MIN_HEIGHT", "1900"))
 MAX_HEIGHT = int(os.getenv("MOCK_MAX_HEIGHT", "2500"))
 INCREMENT = int(os.getenv("MOCK_SCORE_INCREMENT", "50000"))
+PLAY_DURATION_SECONDS = max(0.0, float(os.getenv("AUTHORIZED_PLAY_DURATION_SECONDS", "0")))
 ACTIVE_INTERVAL = max(0.5, float(os.getenv("ACTIVE_INTERVAL_SECONDS", "0.5")))
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -190,7 +191,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             await send_message(session, chat_id, "No test site selected. Send /site https://your-deployed-test-site first; the localhost mock is not used automatically.")
             return
         await send_message(session, chat_id, "Inspecting the site API, requesting a fresh server token, and running the authorized test…")
-        result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT)
+        result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT, PLAY_DURATION_SECONDS)
         payload = result["payload"]
         outcome = result["result"]
         await send_message(session, chat_id, f"Submitted to {site}.\nIdentity: {identity}\nPrevious top: {result['previous_score']}\nNew score: {payload.get('score', 'reported by site')} (+at least {INCREMENT})\nHeight: {payload.get('height', 'reported by site')}m\nResult: {json.dumps(outcome)[:1200]}")
@@ -210,7 +211,7 @@ async def run_active_chats(session: aiohttp.ClientSession, state: dict[str, Any]
             continue
         try:
             site = site_for(state, chat_id)
-            result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT)
+            result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT, PLAY_DURATION_SECONDS)
             payload = result["payload"]
             await send_message(session, chat_id, f"Automatic test result for {identity}: score {payload.get('score')} at {payload.get('height')}m. Previous top {result['previous_score']}.")
             settings["next_run"] = now + ACTIVE_INTERVAL
