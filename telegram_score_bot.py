@@ -132,7 +132,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     owner_schedules = schedules.setdefault(chat_id, {})
 
     if command in {"/start", "/help"}:
-        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS> [UTC|LOCAL]\n/schedules\n/ack <request-id> or /ack all\n/cancel <request-id>\n/clear")
+        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <default identity>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS> [UTC|LOCAL] [identity]\n/schedules\n/ack <request-id> or /ack all\n/cancel <request-id>\n/clear")
     elif command == "/site":
         value = argument.strip().rstrip("/")
         if not value.startswith(("http://", "https://")):
@@ -174,21 +174,27 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         await send_message(session, chat_id, "Saved identity and site cleared.")
     elif command == "/schedule":
         parts = argument.split()
-        if len(parts) not in {2, 3}:
-            await send_message(session, chat_id, "Usage: /schedule <target score> <HH:MM:SS> [UTC|LOCAL]\nExample: /schedule 100000 11:59:59 UTC")
-            return
-        identity = identities.get(chat_id)
-        if not identity:
-            await send_message(session, chat_id, "Set your identity once with /identity <wallet or username>, then create the scheduled requests.")
+        if len(parts) < 2 or len(parts) > 4:
+            await send_message(session, chat_id, "Usage: /schedule <target score> <HH:MM:SS> [UTC|LOCAL] [identity]\nExample: /schedule 100000 11:59:59 UTC player-two")
             return
         try:
             score = int(parts[0])
             if score < 0:
                 raise ValueError("score must be a non-negative integer")
-            zone = parts[2].upper() if len(parts) == 3 else "LOCAL"
+            remainder = parts[2:]
+            zone = "LOCAL"
+            request_identity = None
+            if remainder and remainder[0].upper() in {"UTC", "LOCAL"}:
+                zone = remainder.pop(0).upper()
+            if remainder:
+                request_identity = remainder[0]
             deadline = parse_deadline(parts[1], zone)
         except ValueError as exc:
             await send_message(session, chat_id, f"Invalid schedule: {exc}")
+            return
+        identity = request_identity or identities.get(chat_id)
+        if not identity:
+            await send_message(session, chat_id, "Set a default with /identity, or specify an identity at the end of /schedule.")
             return
         number = 1
         while f"request-{number}" in owner_schedules:
@@ -196,7 +202,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         request_id = f"request-{number}"
         owner_schedules[request_id] = {"score": score, "deadline": deadline.isoformat(), "identity": identity, "status": "pending"}
         save_state(state)
-        await send_message(session, chat_id, f"Saved {request_id}\nProposed score: {score}\nSubmit deadline: {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')}\nNo leaderboard lookup will be used. Reply /ack {request_id} to obtain a token and schedule submission, or /cancel {request_id}.")
+        await send_message(session, chat_id, f"Saved {request_id}\nIdentity: {identity}\nProposed score: {score}\nSubmit deadline: {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')}\nNo leaderboard lookup will be used. Reply /ack {request_id} to obtain a token and schedule submission, or /cancel {request_id}.")
     elif command == "/schedules":
         if not owner_schedules:
             await send_message(session, chat_id, "No saved scheduled requests.")
@@ -204,7 +210,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         lines = ["Saved scheduled requests:"]
         for request_id, proposal in owner_schedules.items():
             deadline = datetime.fromisoformat(str(proposal["deadline"]))
-            lines.append(f"{request_id}: score {proposal['score']} at {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')} [{proposal.get('status', 'pending')}]")
+            lines.append(f"{request_id}: identity {proposal.get('identity', '(not set)')} — score {proposal['score']} at {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')} [{proposal.get('status', 'pending')}]")
         await send_message(session, chat_id, "\n".join(lines))
     elif command in {"/ack", "/cancel"}:
         if command == "/ack" and argument.strip().lower() == "all":
