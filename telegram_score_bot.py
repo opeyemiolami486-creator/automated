@@ -39,7 +39,9 @@ ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID")
 MIN_HEIGHT = int(os.getenv("MOCK_MIN_HEIGHT", "1900"))
 MAX_HEIGHT = int(os.getenv("MOCK_MAX_HEIGHT", "2500"))
 INCREMENT = int(os.getenv("MOCK_SCORE_INCREMENT", "50000"))
-PLAY_DURATION_SECONDS = max(0.0, float(os.getenv("AUTHORIZED_PLAY_DURATION_SECONDS", "0")))
+PLAY_DURATION_SECONDS = float(os.getenv("AUTHORIZED_PLAY_DURATION_SECONDS", "300"))
+if PLAY_DURATION_SECONDS <= 0:
+    raise ValueError("AUTHORIZED_PLAY_DURATION_SECONDS must be greater than 0")
 ACTIVE_INTERVAL = max(0.5, float(os.getenv("ACTIVE_INTERVAL_SECONDS", "0.5")))
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
