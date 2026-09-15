@@ -210,7 +210,8 @@ Webcade. The bot supports:
   /run                           get a fresh token and submit a local test score
   /schedule <score> <HH:MM:SS> [UTC|LOCAL]  save a timed request
   /schedules                     list saved requests and their statuses
-  /ack <request-id>              acknowledge one request
+  /ack <request-id>              activate one request independently
+  /ack all                       activate every pending request simultaneously
   /cancel <request-id>           cancel one request
   /clear                         remove the saved identity
 ```
@@ -219,7 +220,10 @@ For an authorized site, `/schedule 100000 11:59:59 UTC` saves a proposal without
 reading the leaderboard and returns an ID such as `request-1`. Create as many
 requests as needed, then use `/schedules` to review every score, deadline, and
 status. Reply `/ack request-1` to obtain a fresh server token and schedule one
-request, or `/cancel request-1` to discard it. The deadline uses the bot host's local timezone and is
+request, or `/cancel request-1` to discard it. Use `/ack all` to activate every
+pending request at once; each request obtains its own token and runs as an
+independent background task, so requests do not queue behind one another. The
+deadline uses the bot host's local timezone and is
 displayed in `HH:MM:SS` format. Add `UTC` to use Coordinated Universal Time;
 omit the timezone or use `LOCAL` for the bot host's local timezone. The bot submits at or just after that wall-clock
 time. Before waiting, it measures the start-token request round trip and uses

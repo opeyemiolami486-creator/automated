@@ -132,7 +132,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     owner_schedules = schedules.setdefault(chat_id, {})
 
     if command in {"/start", "/help"}:
-        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS> [UTC|LOCAL]\n/schedules\n/ack <request-id>\n/cancel <request-id>\n/clear")
+        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS> [UTC|LOCAL]\n/schedules\n/ack <request-id> or /ack all\n/cancel <request-id>\n/clear")
     elif command == "/site":
         value = argument.strip().rstrip("/")
         if not value.startswith(("http://", "https://")):
@@ -203,13 +203,30 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             lines.append(f"{request_id}: score {proposal['score']} at {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')} [{proposal.get('status', 'pending')}]")
         await send_message(session, chat_id, "\n".join(lines))
     elif command in {"/ack", "/cancel"}:
+        if command == "/ack" and argument.strip().lower() == "all":
+            identity = identities.get(chat_id)
+            site = selected_site(state, chat_id)
+            if not identity or not site:
+                await send_message(session, chat_id, "Set /site and /identity before acknowledging scheduled submissions.")
+                return
+            pending_ids = [request_id for request_id, item in owner_schedules.items() if item.get("status") == "pending"]
+            if not pending_ids:
+                await send_message(session, chat_id, "There are no pending requests to activate.")
+                return
+            for request_id in pending_ids:
+                owner_schedules[request_id]["status"] = "active"
+            save_state(state)
+            await send_message(session, chat_id, f"Activating {len(pending_ids)} requests simultaneously. Each will use its own token and deadline.")
+            for request_id in pending_ids:
+                asyncio.create_task(execute_scheduled(session, state, chat_id, request_id, site, identity, owner_schedules[request_id]))
+            return
         request_id = argument.strip() or (next(iter(owner_schedules)) if len(owner_schedules) == 1 else "")
         proposal = owner_schedules.get(request_id)
         if not proposal:
             await send_message(session, chat_id, "Specify a valid request ID, for example /ack request-1. Use /schedules to list requests.")
             return
         if command == "/cancel":
-            if proposal.get("status") not in {"pending", "acknowledged"}:
+            if proposal.get("status") not in {"pending", "active"}:
                 await send_message(session, chat_id, f"{request_id} cannot be cancelled because it is {proposal.get('status')}.")
                 return
             proposal["status"] = "cancelled"
@@ -224,9 +241,9 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         if not identity or not site:
             await send_message(session, chat_id, "Set /site and /identity before acknowledging the scheduled submission.")
             return
-        proposal["status"] = "acknowledged"
+        proposal["status"] = "active"
         save_state(state)
-        await send_message(session, chat_id, f"Acknowledged {request_id}. Requesting the server token now; I will submit at the requested HH:MM:SS deadline without reading the leaderboard.")
+        await send_message(session, chat_id, f"Activated {request_id}. Requesting its server token now; it runs independently of every other request and will submit at the requested HH:MM:SS deadline.")
         asyncio.create_task(execute_scheduled(session, state, chat_id, request_id, site, identity, proposal))
     elif command == "/on":
         if not identities.get(chat_id):
