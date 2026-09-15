@@ -235,11 +235,11 @@ public wallet address or a username; never send a seed phrase, private key, or
 Telegram bot token in chat. Set `TELEGRAM_ALLOWED_CHAT_ID` after identifying
 your private test chat so messages from other chats are ignored.
 
-For a team-owned test website, change `MOCK_BASE_URL` only after the team has
-authorized the integration and supplied its API contract. The bot will then
-need the same requirements, leaderboard, start-token, and score-submission
-adapter described above; it should not be pointed at a public competition
-endpoint without explicit permission.
+For a team-owned test website, add only its hostname to
+`AUTHORIZED_TEST_DOMAINS` after the team has authorized the integration and
+supplied its API contract. Judges can then select it in chat with `/site`, use
+`/inspect` to see the declared contract, enter `/identity`, and run `/run`.
+The bot should not be pointed at a public competition endpoint.
 
 ### Reference API compatibility check
 

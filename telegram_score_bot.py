@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Telegram control bot for the authorized local Webcade-style test API.
+"""Telegram control bot for explicitly authorized team test sites.
 
 Commands:
-  /start       Show help
-  /identity X  Save the public wallet address or username for this chat
-  /status      Read the local leaderboard
-  /run         Request a token and submit a higher local test score
-  /clear       Remove the saved identity for this chat
+  /start
+  /site <authorized test URL>
+  /inspect
+  /identity <public wallet address or username>
+  /status
+  /run
+  /clear
 
-Set TELEGRAM_BOT_TOKEN and keep the bot restricted to your own test chat.
-This bot only permits a localhost MOCK_BASE_URL by default.
+The selected site must expose a requirements contract and be allowlisted by
+AUTHORIZED_TEST_DOMAINS. The default remains the local mock API.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -20,11 +21,10 @@ import logging
 import os
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
 
 import aiohttp
 
-from mock_score_automation import submit_higher_score
+from authorized_test_client import inspect_site, run_site
 
 LOG = logging.getLogger("telegram_score_bot")
 STATE_FILE = Path(os.getenv("TELEGRAM_STATE_FILE", "telegram_bot_state.json"))
@@ -39,12 +39,12 @@ API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 def load_state() -> dict[str, Any]:
     if not STATE_FILE.exists():
-        return {"identities": {}}
+        return {"identities": {}, "sites": {}}
     try:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {"identities": {}}
+        return data if isinstance(data, dict) else {"identities": {}, "sites": {}}
     except (OSError, json.JSONDecodeError):
-        return {"identities": {}}
+        return {"identities": {}, "sites": {}}
 
 
 def save_state(state: dict[str, Any]) -> None:
@@ -69,6 +69,10 @@ def allowed(chat_id: str) -> bool:
     return not ALLOWED_CHAT_ID or str(chat_id) == str(ALLOWED_CHAT_ID)
 
 
+def site_for(state: dict[str, Any], chat_id: str) -> str:
+    return str(state.setdefault("sites", {}).get(chat_id) or BASE_URL).rstrip("/")
+
+
 async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], update: dict[str, Any]) -> None:
     message = update.get("message") or update.get("edited_message")
     if not message or not message.get("text"):
@@ -81,9 +85,25 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     command, _, argument = text.partition(" ")
     command = command.split("@", 1)[0].lower()
     identities = state.setdefault("identities", {})
+    sites = state.setdefault("sites", {})
 
     if command in {"/start", "/help"}:
-        await send_message(session, chat_id, "Commands:\n/identity <wallet or username>\n/status\n/run\n/clear")
+        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/inspect\n/identity <wallet or username>\n/status\n/run\n/clear")
+    elif command == "/site":
+        value = argument.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            await send_message(session, chat_id, "Usage: /site https://authorized-team-test.example")
+        else:
+            sites[chat_id] = value
+            save_state(state)
+            await send_message(session, chat_id, "Site saved. Use /inspect to read its declared requirements.")
+    elif command == "/inspect":
+        site = site_for(state, chat_id)
+        try:
+            requirements = await inspect_site(site)
+            await send_message(session, chat_id, "Requirements found for " + site + ":\n" + json.dumps(requirements, indent=2)[:3500])
+        except Exception as exc:
+            await send_message(session, chat_id, f"Could not inspect {site}: {exc}")
     elif command == "/identity":
         value = argument.strip()
         if not value:
@@ -94,17 +114,19 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             await send_message(session, chat_id, f"Saved test identity: {value}")
     elif command == "/clear":
         identities.pop(chat_id, None)
+        sites.pop(chat_id, None)
         save_state(state)
-        await send_message(session, chat_id, "Saved identity cleared.")
+        await send_message(session, chat_id, "Saved identity and site cleared.")
     elif command == "/status":
-        async with session.get(f"{BASE_URL}/api/dudas/board?limit=5&window=today") as response:
+        site = site_for(state, chat_id)
+        async with session.get(f"{site}/api/dudas/board?limit=5&window=today") as response:
             response.raise_for_status()
             board = await response.json()
         rows = board.get("list", [])
         if not rows:
-            await send_message(session, chat_id, "Local test leaderboard is empty.")
+            await send_message(session, chat_id, f"Leaderboard at {site} is empty.")
         else:
-            lines = [f"Local test leaderboard ({len(rows)} shown):"]
+            lines = [f"Leaderboard at {site} ({len(rows)} shown):"]
             lines.extend(f"#{r.get('rank')} {r.get('name')} — {r.get('score')} score, {r.get('height')}m" for r in rows)
             await send_message(session, chat_id, "\n".join(lines))
     elif command == "/run":
@@ -112,18 +134,12 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         if not identity:
             await send_message(session, chat_id, "No identity saved. Send /identity <public wallet address or username> first.")
             return
-        await send_message(session, chat_id, "Starting a local test run and requesting a fresh server token…")
-        result = await submit_higher_score(BASE_URL, identity, None, INCREMENT, MIN_HEIGHT, MAX_HEIGHT)
-        submitted = result["submitted"]
+        site = site_for(state, chat_id)
+        await send_message(session, chat_id, "Inspecting requirements, requesting a fresh server token, and running the authorized test…")
+        result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT)
+        payload = result["payload"]
         outcome = result["result"]
-        await send_message(
-            session,
-            chat_id,
-            f"Submitted to local test API.\nIdentity: {identity}\n"
-            f"Previous top: {result['previous_top_score']}\n"
-            f"New score: {submitted['score']} (+at least {INCREMENT})\n"
-            f"Height: {submitted['height']}m\nRank: {outcome.get('rank')}",
-        )
+        await send_message(session, chat_id, f"Submitted to {site}.\nIdentity: {identity}\nPrevious top: {result['previous_score']}\nNew score: {payload.get('score', 'reported by site')} (+at least {INCREMENT})\nHeight: {payload.get('height', 'reported by site')}m\nResult: {json.dumps(outcome)[:1200]}")
     else:
         await send_message(session, chat_id, "Unknown command. Use /start for help.")
 
@@ -134,7 +150,7 @@ async def run_bot() -> None:
     timeout = aiohttp.ClientTimeout(total=40)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         await telegram_call(session, "deleteWebhook", {"drop_pending_updates": "true"})
-        LOG.info("Telegram bot active; local API=%s", BASE_URL)
+        LOG.info("Telegram bot active; default site=%s", BASE_URL)
         while True:
             params = {"timeout": 30, "offset": offset, "allowed_updates": json.dumps(["message"])}
             try:
@@ -147,7 +163,7 @@ async def run_bot() -> None:
                         LOG.exception("Update failed")
                         chat_id = str(((update.get("message") or {}).get("chat") or {}).get("id", ""))
                         if chat_id and allowed(chat_id):
-                            await send_message(session, chat_id, "Run failed; check the bot log and test API.")
+                            await send_message(session, chat_id, "Run failed; inspect the site contract and bot log.")
             except asyncio.CancelledError:
                 raise
             except Exception:

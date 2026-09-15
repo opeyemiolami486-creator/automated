@@ -135,9 +135,20 @@ async def requirements(request: web.Request) -> web.Response:
     """Declare the public fields required by the local test submission API."""
     return web.json_response({
         "ok": True,
+        "endpoints": {
+            "leaderboard": "/api/dudas/board?limit=10&window=today",
+            "start": "/api/dudas/start",
+            "submit": "/api/dudas/score",
+        },
         "identity": {"field": "address", "label": "wallet address or username", "required": True},
         "token": {"start_endpoint": "/api/dudas/start", "field": "token", "required": True},
-        "score_fields": ["score", "height", "coins", "toads", "combo"],
+        "score_fields": {
+            "score": "score",
+            "height": "height",
+            "coins": "coins",
+            "toads": "toads",
+            "combo": "combo",
+        },
     })
 
 
