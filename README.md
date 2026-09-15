@@ -118,7 +118,11 @@ python mock_score_automation.py --base-url http://127.0.0.1:8080 --increment 100
 ```
 
 The client first reads the local top score, requests a fresh one-use run token,
-calculates a higher test score, and submits it to the localhost mock. The mock
+chooses a realistic reference-style climb height from **1,900 through 2,500**,
+calculates a higher score proportional to that height, and submits it to the
+localhost mock. You can customize the range with `--min-height` and
+`--max-height`, but both values must remain positive and the minimum cannot
+exceed the maximum. The mock
 validates token expiry and one-time use, validates score fields, records the
 server-side elapsed run time and millisecond submission timestamp, and returns
 the resulting rank. It persists local data in `mock_webcade_state.json`, which

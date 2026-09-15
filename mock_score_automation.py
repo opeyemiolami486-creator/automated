@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import random
 import sys
 from typing import Any
 
@@ -24,14 +25,19 @@ async def request_json(session: aiohttp.ClientSession, method: str, url: str, **
         return data
 
 
-async def submit_higher_score(base_url: str, address: str, increment: int) -> dict:
+async def submit_higher_score(
+    base_url: str, address: str, increment: int, min_height: int, max_height: int
+) -> dict:
     if not base_url.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]")):
         raise ValueError("This test client only permits localhost MOCK_BASE_URL")
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         board = await request_json(session, "GET", f"{base_url}/api/dudas/board?limit=1&window=today")
         current = int(board.get("list", [{}])[0].get("score", 0)) if board.get("list") else 0
-        proposed = current + increment
+        height = random.randint(min_height, max_height)
+        # Keep the test result above the current local top while making the
+        # score proportional to a long reference-style climb.
+        proposed = max(current + increment, height * 300)
         run = await request_json(session, "POST", f"{base_url}/api/dudas/start", json={})
         token = run.get("token")
         if not token:
@@ -40,7 +46,7 @@ async def submit_higher_score(base_url: str, address: str, increment: int) -> di
             "address": address,
             "token": token,
             "score": proposed,
-            "height": max(1, proposed // 300),
+            "height": height,
             "coins": max(1, proposed // 1000),
             "toads": max(1, proposed // 5000),
             "combo": 1,
@@ -54,10 +60,16 @@ async def main() -> None:
     parser.add_argument("--base-url", default=os.getenv("MOCK_BASE_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--address", default=os.getenv("MOCK_ADDRESS", "hackathon-local-player"))
     parser.add_argument("--increment", type=int, default=int(os.getenv("MOCK_SCORE_INCREMENT", "1000")))
+    parser.add_argument("--min-height", type=int, default=int(os.getenv("MOCK_MIN_HEIGHT", "1900")))
+    parser.add_argument("--max-height", type=int, default=int(os.getenv("MOCK_MAX_HEIGHT", "2500")))
     args = parser.parse_args()
     if args.increment <= 0:
         raise ValueError("increment must be greater than 0")
-    result = await submit_higher_score(args.base_url.rstrip("/"), args.address, args.increment)
+    if not 0 < args.min_height <= args.max_height:
+        raise ValueError("height range must satisfy 0 < min-height <= max-height")
+    result = await submit_higher_score(
+        args.base_url.rstrip("/"), args.address, args.increment, args.min_height, args.max_height
+    )
     print(result)
 
 
