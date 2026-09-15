@@ -95,6 +95,23 @@ def derive_time_factor(board: Any) -> float | None:
     return min(ratios) if ratios else None
 
 
+def height_for_score(score: int, preferred_min: int = 1900, preferred_max: int = 2500, score_per_height: int | None = None) -> int:
+    """Choose the tallest valid climb for a requested score.
+
+    The reference default rejects a score below ``height * 300``. An
+    authorized site's contract may override that ratio with
+    ``score_rules.min_score_per_height``; otherwise ``MIN_SCORE_PER_HEIGHT``
+    supplies the configured default. If a requested score cannot support the
+    preferred minimum height, reduce the height rather than sending an
+    internally inconsistent payload.
+    """
+    score_per_height = int(os.getenv("MIN_SCORE_PER_HEIGHT", "300")) if score_per_height is None else score_per_height
+    if score_per_height <= 0 or score < score_per_height or preferred_min <= 0 or preferred_max < preferred_min:
+        raise ValueError(f"score {score} is too small to support even a 1m climb")
+    supported = score // score_per_height
+    return min(preferred_max, max(1, min(preferred_min, supported)))
+
+
 def endpoint_url(base_url: str, endpoint: str) -> str:
     """Resolve an endpoint against the site page or its origin.
 
@@ -307,7 +324,10 @@ async def submit_at_deadline(
         if on_wait is not None:
             await on_wait(remaining, compensation)
         await asyncio.sleep(max(0.0, remaining - compensation))
-        score = max(score, height * 300)
+        score_rule = requirements.get("score_rules", {})
+        configured_ratio = score_rule.get("min_score_per_height") if isinstance(score_rule, dict) else None
+        score_per_height = int(configured_ratio) if isinstance(configured_ratio, (int, float)) and configured_ratio > 0 else None
+        height = height_for_score(score, preferred_min=height, preferred_max=height, score_per_height=score_per_height)
         payload: dict[str, Any] = {
             identity_field: identity,
             token_field: token,
