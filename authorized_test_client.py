@@ -13,7 +13,7 @@ import random
 import asyncio
 import math
 from urllib.parse import urlparse
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import aiohttp
 
@@ -164,7 +164,15 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
         }
 
 
-async def run_site(base_url: str, identity: str, increment: int = 50000, min_height: int = 1900, max_height: int = 2500, play_duration_seconds: float | None = None) -> dict[str, Any]:
+async def run_site(
+    base_url: str,
+    identity: str,
+    increment: int = 50000,
+    min_height: int = 1900,
+    max_height: int = 2500,
+    play_duration_seconds: float | None = None,
+    on_timing: Callable[[float, str], Awaitable[None]] | None = None,
+) -> dict[str, Any]:
     if increment < 0 or not 0 < min_height <= max_height or (play_duration_seconds is not None and play_duration_seconds <= 0):
         raise ValueError("score increment must be non-negative, optional play duration must be greater than 0, and height range must be positive")
     requirements = await inspect_site(base_url)
@@ -205,7 +213,17 @@ async def run_site(base_url: str, identity: str, increment: int = 50000, min_hei
         else:
             raise ValueError("site did not declare or expose an allowed run time; set AUTHORIZED_PLAY_DURATION_SECONDS or provide timing metadata")
         safety_margin = _positive_number(os.getenv("TIMING_SAFETY_MARGIN_SECONDS", "0.25")) or 0.0
-        await asyncio.sleep(wait_seconds + safety_margin)
+        total_wait = wait_seconds + safety_margin
+        token_lifetime = _positive_number(start.get("expires_in")) if isinstance(start, dict) else None
+        if token_lifetime is not None and total_wait >= token_lifetime:
+            raise ValueError(
+                f"calculated wait {total_wait:.1f}s is not valid: it reaches the token lifetime of {token_lifetime:.1f}s; "
+                "provide the site's minimum timing factor or set AUTHORIZED_PLAY_DURATION_SECONDS"
+            )
+        if on_timing is not None:
+            source = "explicit duration" if duration is not None else "time factor" if factor is not None else "override"
+            await on_timing(total_wait, source)
+        await asyncio.sleep(total_wait)
         score = max(current + increment, height * 300)
         payload: dict[str, Any] = {
             identity_field: identity,

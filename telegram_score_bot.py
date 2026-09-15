@@ -194,7 +194,9 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
             await send_message(session, chat_id, "No test site selected. Send /site https://your-deployed-test-site first; the localhost mock is not used automatically.")
             return
         await send_message(session, chat_id, "Inspecting the site API, requesting a fresh server token, and running the authorized test…")
-        result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT, PLAY_DURATION_SECONDS)
+        async def timing_status(seconds: float, source: str) -> None:
+            await send_message(session, chat_id, f"Server timing found ({source}); waiting {seconds:.1f}s before submitting the test run…")
+        result = await run_site(site, identity, INCREMENT, MIN_HEIGHT, MAX_HEIGHT, PLAY_DURATION_SECONDS, timing_status)
         payload = result["payload"]
         outcome = result["result"]
         await send_message(session, chat_id, f"Submitted to {site}.\nIdentity: {identity}\nPrevious top: {result['previous_score']}\nNew score: {payload.get('score', 'reported by site')} (+at least {INCREMENT})\nHeight: {payload.get('height', 'reported by site')}m\nResult: {json.dumps(outcome)[:1200]}")
