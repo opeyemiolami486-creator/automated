@@ -208,17 +208,18 @@ Webcade. The bot supports:
 /on                            keep running until /off
   /off                           stop automatic runs
   /run                           get a fresh token and submit a local test score
-  /schedule <score> <HH:MM:SS>  propose a score and exact submission time
+  /schedule <score> <HH:MM:SS> [UTC|LOCAL]  propose a score and exact submission time
   /ack                           acknowledge the proposed scheduled submission
   /cancel                        cancel a pending scheduled submission
   /clear                         remove the saved identity
 ```
 
-For an authorized site, `/schedule 100000 11:59:59` creates a proposal without
+For an authorized site, `/schedule 100000 11:59:59 UTC` creates a proposal without
 reading the leaderboard. The bot displays the target score and exact deadline;
 reply `/ack` to obtain a fresh server token and schedule the submission, or
 `/cancel` to discard it. The deadline uses the bot host's local timezone and is
-displayed in `HH:MM:SS` format. The bot submits at or just after that wall-clock
+displayed in `HH:MM:SS` format. Add `UTC` to use Coordinated Universal Time;
+omit the timezone or use `LOCAL` for the bot host's local timezone. The bot submits at or just after that wall-clock
 time; network latency means no client can guarantee the server receives a
 request at the exact same instant. The server remains authoritative about token
 validity and minimum elapsed time.

@@ -22,7 +22,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -93,13 +93,18 @@ def selected_site(state: dict[str, Any], chat_id: str) -> str | None:
     return value.strip().rstrip("/")
 
 
-def parse_deadline(value: str) -> datetime:
-    """Parse HH:MM:SS in the bot host's local timezone."""
+def parse_deadline(value: str, timezone_name: str = "local") -> datetime:
+    """Parse HH:MM:SS in UTC or the bot host's local timezone."""
     try:
         clock = datetime.strptime(value, "%H:%M:%S").time()
     except ValueError as exc:
         raise ValueError("time must use exact HH:MM:SS format, for example 11:59:59") from exc
-    now = datetime.now().astimezone()
+    if timezone_name.upper() == "UTC":
+        now = datetime.now(timezone.utc)
+    elif timezone_name.lower() == "local":
+        now = datetime.now().astimezone()
+    else:
+        raise ValueError("timezone must be UTC or LOCAL")
     deadline = datetime.combine(now.date(), clock, tzinfo=now.tzinfo)
     if deadline <= now:
         deadline += timedelta(days=1)
@@ -165,14 +170,15 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         await send_message(session, chat_id, "Saved identity and site cleared.")
     elif command == "/schedule":
         parts = argument.split()
-        if len(parts) != 2:
-            await send_message(session, chat_id, "Usage: /schedule <target score> <HH:MM:SS>\nExample: /schedule 100000 11:59:59")
+        if len(parts) not in {2, 3}:
+            await send_message(session, chat_id, "Usage: /schedule <target score> <HH:MM:SS> [UTC|LOCAL]\nExample: /schedule 100000 11:59:59 UTC")
             return
         try:
             score = int(parts[0])
             if score < 0:
                 raise ValueError("score must be a non-negative integer")
-            deadline = parse_deadline(parts[1])
+            zone = parts[2].upper() if len(parts) == 3 else "LOCAL"
+            deadline = parse_deadline(parts[1], zone)
         except ValueError as exc:
             await send_message(session, chat_id, f"Invalid schedule: {exc}")
             return
