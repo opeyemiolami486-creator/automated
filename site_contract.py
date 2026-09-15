@@ -6,7 +6,7 @@ from typing import Any
 
 import aiohttp
 
-from authorized_test_client import dotted, inspect_site
+from authorized_test_client import dotted, endpoint_url, inspect_site
 
 
 async def validate_contract(base_url: str) -> dict[str, Any]:
@@ -56,7 +56,7 @@ async def validate_contract(base_url: str) -> dict[str, Any]:
         ):
             if not isinstance(path, str) or not path.startswith("/"):
                 continue
-            url = base_url.rstrip("/") + path
+            url = endpoint_url(base_url, path)
             try:
                 async with session.request(method, url, json={} if method == "POST" else None) as response:
                     body = await response.json(content_type=None)

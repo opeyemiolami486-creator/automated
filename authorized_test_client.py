@@ -46,6 +46,18 @@ def dotted(data: Any, path: str) -> Any:
     return value
 
 
+def endpoint_url(base_url: str, endpoint: str) -> str:
+    """Resolve an endpoint against the site page or its origin.
+
+    API roots such as ``/api/dudas/score`` are origin-relative, while a
+    path such as ``/game/start`` is relative to the selected site page.
+    """
+    if endpoint.startswith("/api/"):
+        parsed = urlparse(base_url.rstrip("/"))
+        return f"{parsed.scheme}://{parsed.netloc}{endpoint}"
+    return base_url.rstrip("/") + endpoint
+
+
 async def json_request(session: aiohttp.ClientSession, method: str, url: str, **kwargs: Any) -> Any:
     async with session.request(method, url, **kwargs) as response:
         data = await response.json(content_type=None)
@@ -128,10 +140,10 @@ async def run_site(base_url: str, identity: str, increment: int = 50000, min_hei
         raise ValueError("site requirements must declare an identity field")
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        board = await json_request(session, "GET", base_url.rstrip("/") + endpoints["leaderboard"])
+        board = await json_request(session, "GET", endpoint_url(base_url, endpoints["leaderboard"]))
         rows = board.get("list", []) if isinstance(board, dict) else board
         current = int(rows[0].get(fields.get("score", "score"), 0)) if rows else 0
-        start = await json_request(session, "POST", base_url.rstrip("/") + endpoints["start"], json={})
+        start = await json_request(session, "POST", endpoint_url(base_url, endpoints["start"]), json={})
         token = dotted(start, token_path)
         if not isinstance(token, str) or not token:
             raise ValueError("start response did not contain the declared token")
@@ -146,5 +158,5 @@ async def run_site(base_url: str, identity: str, increment: int = 50000, min_hei
         for logical, default in (("coins", 0), ("toads", 0), ("combo", 1)):
             if logical in fields:
                 payload[fields[logical]] = max(default, score // (1000 if logical == "coins" else 5000))
-        result = await json_request(session, "POST", base_url.rstrip("/") + endpoints["submit"], json=payload)
+        result = await json_request(session, "POST", endpoint_url(base_url, endpoints["submit"]), json=payload)
         return {"previous_score": current, "identity": identity, "payload": payload, "result": result}

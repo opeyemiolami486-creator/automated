@@ -27,7 +27,7 @@ from typing import Any
 
 import aiohttp
 
-from authorized_test_client import allowed_host, inspect_site, run_site
+from authorized_test_client import allowed_host, endpoint_url, inspect_site, run_site
 from site_code_discovery import discover
 from site_contract import validate_contract
 
@@ -169,7 +169,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         leaderboard_path = requirements.get("endpoints", {}).get("leaderboard")
         if not isinstance(leaderboard_path, str) or not leaderboard_path.startswith("/"):
             raise ValueError("site requirements do not declare a relative leaderboard endpoint")
-        async with session.get(f"{site.rstrip('/')}{leaderboard_path}") as response:
+        async with session.get(endpoint_url(site, leaderboard_path)) as response:
             response.raise_for_status()
             board = await response.json(content_type=None)
         rows = board.get("list", [])
