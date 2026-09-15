@@ -108,8 +108,10 @@ def height_for_score(score: int, preferred_min: int = 1900, preferred_max: int =
     score_per_height = int(os.getenv("MIN_SCORE_PER_HEIGHT", "300")) if score_per_height is None else score_per_height
     if score_per_height <= 0 or score < score_per_height or preferred_min <= 0 or preferred_max < preferred_min:
         raise ValueError(f"score {score} is too small to support even a 1m climb")
-    supported = score // score_per_height
-    return min(preferred_max, max(1, min(preferred_min, supported)))
+    supported = max(1, score // score_per_height)
+    if supported < preferred_min:
+        return supported
+    return min(preferred_max, supported)
 
 
 def endpoint_url(base_url: str, endpoint: str) -> str:
