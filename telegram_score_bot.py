@@ -12,8 +12,9 @@ Commands:
   /run
   /clear
 
-The selected site must expose a requirements contract and be allowlisted by
-AUTHORIZED_TEST_DOMAINS. The default remains the local mock API.
+The selected site may expose a requirements contract and must be allowlisted by
+AUTHORIZED_TEST_DOMAINS. Sites without a contract use the conventional Dudas
+API defaults. The default remains the local mock API.
 """
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a team test site's declared API contract without submitting a score."""
+"""Validate a team test site's API, using an optional declared contract."""
 from __future__ import annotations
 
 from typing import Any
