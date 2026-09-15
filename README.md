@@ -95,6 +95,38 @@ python -m py_compile answer_automation.py
 python test_answer_automation.py
 ```
 
+## Local Webcade-style mock and higher-score test
+
+The repository also includes a local-only mock that mirrors the reference flow:
+
+```text
+POST /api/dudas/start
+POST /api/dudas/score
+GET  /api/dudas/board
+```
+
+Start the mock API in one terminal:
+
+```bash
+MOCK_PORT=8080 python mock_webcade_api.py
+```
+
+In another terminal, run the local score client:
+
+```bash
+python mock_score_automation.py --base-url http://127.0.0.1:8080 --increment 1000
+```
+
+The client first reads the local top score, requests a fresh one-use run token,
+calculates a higher test score, and submits it to the localhost mock. The mock
+validates token expiry and one-time use, validates score fields, records the
+server-side elapsed run time and millisecond submission timestamp, and returns
+the resulting rank. It persists local data in `mock_webcade_state.json`, which
+is ignored by Git.
+
+This test path is deliberately restricted to localhost and never sends the
+score to Webcade or any public leaderboard.
+
 ## Deployment
 
 This is a long-running worker. Run it on a permitted server, container, or managed worker service with environment variables configured. For a hackathon demo, `RUN_ONCE=true` is useful for a single controlled test; for continuous monitoring, leave it false and use a host that stays online.
