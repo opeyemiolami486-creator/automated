@@ -220,9 +220,12 @@ reply `/ack` to obtain a fresh server token and schedule the submission, or
 `/cancel` to discard it. The deadline uses the bot host's local timezone and is
 displayed in `HH:MM:SS` format. Add `UTC` to use Coordinated Universal Time;
 omit the timezone or use `LOCAL` for the bot host's local timezone. The bot submits at or just after that wall-clock
-time; network latency means no client can guarantee the server receives a
-request at the exact same instant. The server remains authoritative about token
-validity and minimum elapsed time.
+time. Before waiting, it measures the start-token request round trip and uses
+half of that measurement as an estimated one-way latency compensation. The
+result includes the measured RTT and compensation for diagnosis. This improves
+second-level alignment but cannot guarantee an exact server timestamp because
+network paths are asymmetric and jittery; the server remains authoritative
+about token validity and minimum elapsed time.
 
 ### Run it locally
 

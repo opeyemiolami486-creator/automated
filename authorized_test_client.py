@@ -12,6 +12,7 @@ import os
 import random
 import asyncio
 import math
+import time
 from datetime import datetime
 from urllib.parse import urlparse
 from typing import Any, Awaitable, Callable
@@ -245,7 +246,7 @@ async def submit_at_deadline(
     score: int,
     deadline: datetime,
     height: int = 1,
-    on_wait: Callable[[float], Awaitable[None]] | None = None,
+    on_wait: Callable[[float, float], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """Submit a user-confirmed score at an exact local wall-clock deadline.
 
@@ -271,16 +272,25 @@ async def submit_at_deadline(
     token_field = token_spec.get("field", "token")
     token_path = token_spec.get("json_path", "token")
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
-        start = await json_request(session, "POST", endpoint_url(base_url, endpoints["start"]), json={})
+        start_url = endpoint_url(base_url, endpoints["start"])
+        start_sent = time.monotonic()
+        start = await json_request(session, "POST", start_url, json={})
+        start_rtt = time.monotonic() - start_sent
         token = dotted(start, token_path)
         if not isinstance(token, str) or not token:
             raise ValueError("start response did not contain the declared token")
         remaining = (deadline - datetime.now(deadline.tzinfo)).total_seconds()
         if remaining <= 0:
             raise ValueError("deadline must be in the future")
+        # The score request must leave before the wall-clock deadline because
+        # the server timestamps receipt, not client-side dispatch. The start
+        # request uses the same host and route, so half its RTT is the best
+        # available estimate of one-way network travel. The estimate is capped
+        # to avoid an unusual slow token response causing a visibly early post.
+        compensation = min(start_rtt / 2.0, remaining / 2.0)
         if on_wait is not None:
-            await on_wait(remaining)
-        await asyncio.sleep(remaining)
+            await on_wait(remaining, compensation)
+        await asyncio.sleep(max(0.0, remaining - compensation))
         payload: dict[str, Any] = {
             identity_field: identity,
             token_field: token,
@@ -291,4 +301,11 @@ async def submit_at_deadline(
             if logical in fields:
                 payload[fields[logical]] = max(default, score // (1000 if logical == "coins" else 5000))
         result = await json_request(session, "POST", endpoint_url(base_url, endpoints["submit"]), json=payload)
-        return {"identity": identity, "payload": payload, "result": result, "deadline": deadline.isoformat()}
+        return {
+            "identity": identity,
+            "payload": payload,
+            "result": result,
+            "deadline": deadline.isoformat(),
+            "start_rtt_seconds": start_rtt,
+            "latency_compensation_seconds": compensation,
+        }
