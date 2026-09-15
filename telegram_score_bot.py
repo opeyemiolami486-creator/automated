@@ -125,10 +125,14 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
     identities = state.setdefault("identities", {})
     sites = state.setdefault("sites", {})
     active = state.setdefault("active", {})
-    pending = state.setdefault("pending_schedules", {})
+    schedules = state.setdefault("schedules", {})
+    old_pending = state.pop("pending_schedules", {})
+    for owner, proposal in old_pending.items():
+        schedules.setdefault(owner, {})["request-1"] = {**proposal, "status": "pending"}
+    owner_schedules = schedules.setdefault(chat_id, {})
 
     if command in {"/start", "/help"}:
-        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS>\n/ack\n/cancel\n/clear")
+        await send_message(session, chat_id, "Commands:\n/site <authorized test URL>\n/discover\n/inspect\n/identity <wallet or username>\n/status\n/on\n/off\n/run\n/schedule <score> <HH:MM:SS> [UTC|LOCAL]\n/schedules\n/ack <request-id>\n/cancel <request-id>\n/clear")
     elif command == "/site":
         value = argument.strip().rstrip("/")
         if not value.startswith(("http://", "https://")):
@@ -165,7 +169,7 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         identities.pop(chat_id, None)
         sites.pop(chat_id, None)
         active.pop(chat_id, None)
-        pending.pop(chat_id, None)
+        schedules.pop(chat_id, None)
         save_state(state)
         await send_message(session, chat_id, "Saved identity and site cleared.")
     elif command == "/schedule":
@@ -182,28 +186,48 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         except ValueError as exc:
             await send_message(session, chat_id, f"Invalid schedule: {exc}")
             return
-        pending[chat_id] = {"score": score, "deadline": deadline.isoformat()}
+        number = 1
+        while f"request-{number}" in owner_schedules:
+            number += 1
+        request_id = f"request-{number}"
+        owner_schedules[request_id] = {"score": score, "deadline": deadline.isoformat(), "status": "pending"}
         save_state(state)
-        await send_message(session, chat_id, f"Proposed score: {score}\nSubmit deadline: {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')}\nNo leaderboard lookup will be used. Reply /ack to obtain a token and schedule submission, or /cancel.")
+        await send_message(session, chat_id, f"Saved {request_id}\nProposed score: {score}\nSubmit deadline: {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')}\nNo leaderboard lookup will be used. Reply /ack {request_id} to obtain a token and schedule submission, or /cancel {request_id}.")
+    elif command == "/schedules":
+        if not owner_schedules:
+            await send_message(session, chat_id, "No saved scheduled requests.")
+            return
+        lines = ["Saved scheduled requests:"]
+        for request_id, proposal in owner_schedules.items():
+            deadline = datetime.fromisoformat(str(proposal["deadline"]))
+            lines.append(f"{request_id}: score {proposal['score']} at {deadline.strftime('%Y-%m-%d %H:%M:%S %Z')} [{proposal.get('status', 'pending')}]")
+        await send_message(session, chat_id, "\n".join(lines))
     elif command in {"/ack", "/cancel"}:
-        proposal = pending.get(chat_id)
+        request_id = argument.strip() or (next(iter(owner_schedules)) if len(owner_schedules) == 1 else "")
+        proposal = owner_schedules.get(request_id)
         if not proposal:
-            await send_message(session, chat_id, "There is no pending scheduled submission.")
+            await send_message(session, chat_id, "Specify a valid request ID, for example /ack request-1. Use /schedules to list requests.")
             return
         if command == "/cancel":
-            pending.pop(chat_id, None)
+            if proposal.get("status") not in {"pending", "acknowledged"}:
+                await send_message(session, chat_id, f"{request_id} cannot be cancelled because it is {proposal.get('status')}.")
+                return
+            proposal["status"] = "cancelled"
             save_state(state)
-            await send_message(session, chat_id, "Scheduled submission cancelled.")
+            await send_message(session, chat_id, f"{request_id} cancelled.")
+            return
+        if proposal.get("status") != "pending":
+            await send_message(session, chat_id, f"{request_id} is already {proposal.get('status')}.")
             return
         identity = identities.get(chat_id)
         site = selected_site(state, chat_id)
         if not identity or not site:
             await send_message(session, chat_id, "Set /site and /identity before acknowledging the scheduled submission.")
             return
-        pending.pop(chat_id, None)
+        proposal["status"] = "acknowledged"
         save_state(state)
-        await send_message(session, chat_id, "Acknowledged. Requesting the server token now; I will submit at the requested HH:MM:SS deadline without reading the leaderboard.")
-        asyncio.create_task(execute_scheduled(session, chat_id, site, identity, proposal))
+        await send_message(session, chat_id, f"Acknowledged {request_id}. Requesting the server token now; I will submit at the requested HH:MM:SS deadline without reading the leaderboard.")
+        asyncio.create_task(execute_scheduled(session, state, chat_id, request_id, site, identity, proposal))
     elif command == "/on":
         if not identities.get(chat_id):
             await send_message(session, chat_id, "Send /identity <public wallet address or username> first.")
@@ -285,7 +309,7 @@ async def run_active_chats(session: aiohttp.ClientSession, state: dict[str, Any]
             save_state(state)
 
 
-async def execute_scheduled(session: aiohttp.ClientSession, chat_id: str, site: str, identity: str, proposal: dict[str, Any]) -> None:
+async def execute_scheduled(session: aiohttp.ClientSession, state: dict[str, Any], chat_id: str, request_id: str, site: str, identity: str, proposal: dict[str, Any]) -> None:
     try:
         deadline = datetime.fromisoformat(str(proposal["deadline"]))
 
@@ -294,9 +318,15 @@ async def execute_scheduled(session: aiohttp.ClientSession, chat_id: str, site: 
 
         result = await submit_at_deadline(site, identity, int(proposal["score"]), deadline, MIN_HEIGHT, wait_status)
         payload = result["payload"]
+        proposal["status"] = "submitted"
+        proposal["result"] = result["result"]
+        save_state(state)
         await send_message(session, chat_id, f"Scheduled submission sent at {deadline.strftime('%H:%M:%S')}\nScore: {payload.get('score')}\nResult: {json.dumps(result['result'])[:1200]}")
     except Exception as exc:
         LOG.exception("Scheduled run failed for chat %s", chat_id)
+        proposal["status"] = "failed"
+        proposal["error"] = f"{type(exc).__name__}: {exc}"
+        save_state(state)
         await send_message(session, chat_id, f"Scheduled submission failed: {type(exc).__name__}: {exc}")
 
 
