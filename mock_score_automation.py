@@ -25,6 +25,17 @@ async def request_json(session: aiohttp.ClientSession, method: str, url: str, **
         return data
 
 
+async def optional_requirements(session: aiohttp.ClientSession, url: str) -> dict:
+    """Read requirements when supported; an explicit client field may be used otherwise."""
+    async with session.get(url) as response:
+        if response.status == 404:
+            return {}
+        data = await response.json(content_type=None)
+        if response.status >= 400:
+            raise RuntimeError(f"HTTP {response.status}: {data}")
+        return data if isinstance(data, dict) else {}
+
+
 async def submit_higher_score(
     base_url: str, identity: str | None, identity_field: str | None,
     increment: int, min_height: int, max_height: int
@@ -34,7 +45,7 @@ async def submit_higher_score(
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         board = await request_json(session, "GET", f"{base_url}/api/dudas/board?limit=1&window=today")
-        requirements = await request_json(session, "GET", f"{base_url}/api/dudas/requirements")
+        requirements = await optional_requirements(session, f"{base_url}/api/dudas/requirements")
         declared = requirements.get("identity", {}) if isinstance(requirements, dict) else {}
         field = identity_field or declared.get("field") or "address"
         label = declared.get("label", "wallet address or username")

@@ -241,6 +241,16 @@ need the same requirements, leaderboard, start-token, and score-submission
 adapter described above; it should not be pointed at a public competition
 endpoint without explicit permission.
 
+### Reference API compatibility check
+
+The public Dudas Jump API was checked without posting a score. Its leaderboard
+response uses `list`, `rank`, `name`, `score`, `height`, `toads`, and `secs`, and
+`POST /api/dudas/start` returned a server-issued `{ "token": "..." }`. The
+public site does not expose `/api/dudas/requirements`; the client now treats a
+404 requirements response as optional and requires an explicit identity field
+when a team test API does not publish one. The public score endpoint is not
+called by this repository’s test automation.
+
 ## Deployment
 
 This is a long-running worker. Run it on a permitted server, container, or managed worker service with environment variables configured. For a hackathon demo, `RUN_ONCE=true` is useful for a single controlled test; for continuous monitoring, leave it false and use a host that stays online.
