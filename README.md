@@ -189,6 +189,58 @@ produce a test value at least 50,000 higher with a separate modified-height
 field, and serialize the exact payload shape required by that test site. Until
 then, the committed higher-score workflow remains localhost-only.
 
+## Telegram control bot
+
+`telegram_score_bot.py` provides a Telegram interface to the **local mock API**.
+It does not send scores to Webcade. The bot supports:
+
+```text
+/start                         show help
+/identity <wallet or username> save the public run identity
+/status                        read the local leaderboard
+/run                           get a fresh token and submit a local test score
+/clear                         remove the saved identity
+```
+
+### Run it locally
+
+1. Create a bot with Telegram's official BotFather and copy its token. Never
+   commit the token or put it in a public repository.
+2. Start the local API in terminal 1:
+
+   ```bash
+   cd automated
+   set -a; . ./.env; set +a
+   python mock_webcade_api.py
+   ```
+
+3. Start the Telegram bot in terminal 2:
+
+   ```bash
+   cd automated
+   set -a; . ./.env; set +a
+   python telegram_score_bot.py
+   ```
+
+4. Open your Telegram bot and send:
+
+   ```text
+   /identity demo-player
+   /status
+   /run
+   ```
+
+The bot asks for the identity through `/identity` before a run. Use only a
+public wallet address or a username; never send a seed phrase, private key, or
+Telegram bot token in chat. Set `TELEGRAM_ALLOWED_CHAT_ID` after identifying
+your private test chat so messages from other chats are ignored.
+
+For a team-owned test website, change `MOCK_BASE_URL` only after the team has
+authorized the integration and supplied its API contract. The bot will then
+need the same requirements, leaderboard, start-token, and score-submission
+adapter described above; it should not be pointed at a public competition
+endpoint without explicit permission.
+
 ## Deployment
 
 This is a long-running worker. Run it on a permitted server, container, or managed worker service with environment variables configured. For a hackathon demo, `RUN_ONCE=true` is useful for a single controlled test; for continuous monitoring, leave it false and use a host that stays online.
