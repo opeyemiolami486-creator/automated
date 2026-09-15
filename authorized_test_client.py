@@ -121,8 +121,8 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
 
 
 async def run_site(base_url: str, identity: str, increment: int = 50000, min_height: int = 1900, max_height: int = 2500) -> dict[str, Any]:
-    if increment < 50000 or not 0 < min_height <= max_height:
-        raise ValueError("invalid score increment or height range")
+    if increment < 0 or not 0 < min_height <= max_height:
+        raise ValueError("score increment must be non-negative and height range must be positive")
     requirements = await inspect_site(base_url)
     endpoints = requirements.get("endpoints", {})
     identity_spec = requirements.get("identity", {})
