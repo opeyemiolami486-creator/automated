@@ -24,6 +24,8 @@ def allowed_host(base_url: str) -> bool:
             continue
         if "://" in raw:
             raw = urlparse(raw).hostname or ""
+        elif "/" in raw or ":" in raw:
+            raw = urlparse("//" + raw).hostname or raw.split("/", 1)[0].split(":", 1)[0]
         allowed.append(raw.rstrip("."))
     if host in {"127.0.0.1", "localhost", "::1"}:
         return True

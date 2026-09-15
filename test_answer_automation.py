@@ -63,9 +63,24 @@ def test_token_extraction_shapes():
     assert worker.extract_token({"run_token": "alternate-token"}) == "alternate-token"
 
 
+def test_allowlist_normalizes_domains():
+    from authorized_test_client import allowed_host
+    old = os.environ.get("AUTHORIZED_TEST_DOMAINS")
+    os.environ["AUTHORIZED_TEST_DOMAINS"] = "https://team-example.com/test, *.staging.com"
+    try:
+        assert allowed_host("https://team-example.com/game")
+        assert allowed_host("https://api.staging.com:443/game")
+    finally:
+        if old is None:
+            os.environ.pop("AUTHORIZED_TEST_DOMAINS", None)
+        else:
+            os.environ["AUTHORIZED_TEST_DOMAINS"] = old
+
+
 if __name__ == "__main__":
     test_decimal_polling_and_invalid_values()
     test_invalid_interval_is_rejected()
     test_state_file_round_trip()
     test_token_extraction_shapes()
+    test_allowlist_normalizes_domains()
     print("answer automation tests passed")

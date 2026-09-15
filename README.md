@@ -191,13 +191,16 @@ then, the committed higher-score workflow remains localhost-only.
 
 ## Telegram control bot
 
-`telegram_score_bot.py` provides a Telegram interface to the **local mock API**.
-It does not send scores to Webcade. The bot supports:
+`telegram_score_bot.py` provides a Telegram interface to an explicitly
+authorized team test API or the **local mock API**. It does not send scores to
+Webcade. The bot supports:
 
 ```text
 /start                         show help
 /identity <wallet or username> save the public run identity
 /status                        read the local leaderboard
+/on                            keep running until /off
+/off                           stop automatic runs
 /run                           get a fresh token and submit a local test score
 /clear                         remove the saved identity
 ```
@@ -225,9 +228,10 @@ It does not send scores to Webcade. The bot supports:
 4. Open your Telegram bot and send:
 
    ```text
+   /site https://staging.example.com/game
+   /inspect
    /identity demo-player
-   /status
-   /run
+   /on
    ```
 
 The bot asks for the identity through `/identity` before a run. Use only a
@@ -254,12 +258,14 @@ You may also explicitly allow all subdomains with a wildcard:
 AUTHORIZED_TEST_DOMAINS=*.example.com
 ```
 
-Do not include a path in the allowlist. The bot reports the actual hostname
-and configured entries when rejecting a site. Localhost is always allowed for
-the local mock.
+Do not include a path in the allowlist. The bot now accepts plain `.com` hosts,
+full `https://` URLs, optional ports, and explicit `*.` subdomain wildcards.
+It reports the actual hostname and configured entries when rejecting a site.
+Localhost is always allowed for the local mock.
 
 After `/site`, `/inspect`, and `/identity`, send `/on`. The bot then performs
-the authorized test run repeatedly at `ACTIVE_INTERVAL_SECONDS` and sends
+the authorized test run repeatedly at `ACTIVE_INTERVAL_SECONDS` (default
+`0.5` seconds) and sends
 feedback to Telegram until you send `/off`. An API or validation error pauses
 the active mode automatically, and the bot tells you why.
 

@@ -36,7 +36,7 @@ ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID")
 MIN_HEIGHT = int(os.getenv("MOCK_MIN_HEIGHT", "1900"))
 MAX_HEIGHT = int(os.getenv("MOCK_MAX_HEIGHT", "2500"))
 INCREMENT = int(os.getenv("MOCK_SCORE_INCREMENT", "50000"))
-ACTIVE_INTERVAL = float(os.getenv("ACTIVE_INTERVAL_SECONDS", "60"))
+ACTIVE_INTERVAL = max(0.5, float(os.getenv("ACTIVE_INTERVAL_SECONDS", "0.5")))
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
@@ -199,7 +199,9 @@ async def run_bot() -> None:
         await telegram_call(session, "deleteWebhook", {"drop_pending_updates": "true"})
         LOG.info("Telegram bot active; default site=%s", BASE_URL)
         while True:
-            params = {"timeout": 30, "offset": offset, "allowed_updates": json.dumps(["message"])}
+            # Short polling keeps active test runs close to the configured
+            # 0.5-second cadence instead of waiting on a long Telegram poll.
+            params = {"timeout": 0, "offset": offset, "allowed_updates": json.dumps(["message"])}
             try:
                 updates = await telegram_call(session, "getUpdates", params)
                 for update in updates or []:
@@ -212,6 +214,7 @@ async def run_bot() -> None:
                         if chat_id and allowed(chat_id):
                             await send_message(session, chat_id, "Run failed; inspect the site contract and bot log.")
                 await run_active_chats(session, state)
+                await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 raise
             except Exception:
