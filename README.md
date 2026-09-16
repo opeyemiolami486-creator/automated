@@ -413,3 +413,27 @@ wallet private keys, seed phrases, or Telegram identity state. Railway may
 restart a worker, so the bot keeps its Telegram update offset and chat state in
 its local filesystem only for the lifetime of that container; send `/site`,
 `/identity`, and `/on` again after a fresh deployment if needed.
+
+
+## Udin Brainrot Fortress hackathon userscript
+
+`udin-brainrot-fortress-hackathon.user.js` is a Tampermonkey userscript for the authorized hackathon page:
+
+```text
+https://udin-brainrot-fortress.lovable.app/*
+```
+
+Install it by opening Tampermonkey, creating a new script, and pasting in the contents of [udin-brainrot-fortress-hackathon.user.js](udin-brainrot-fortress-hackathon.user.js). Reload the game. A collapsible **Hackathon tools** panel appears in the top-left corner with:
+
+- **Add 5,000 coins**, which increases the current client-side coin balance by exactly 5,000.
+- **Add 1 life**, which increases the current client-side life count by one and clears the local game-over flag if there is now a life available.
+
+The controls locate the game engine through the canvas component's React ref and call its existing `emit()` state-update mechanism. They do not call an undocumented API, modify leaderboard data, or persist a score. The changes are local to the current browser tab and are intended for a hackathon/demo environment where this kind of client-side control is authorized.
+
+### Validation
+
+```bash
+node --check udin-brainrot-fortress-hackathon.user.js
+```
+
+The script is intentionally scoped to the target hostname through its Tampermonkey `@match` rule.
