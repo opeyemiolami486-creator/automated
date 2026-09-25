@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Run a higher test score against an explicitly authorized team test site.
+"""Run an authorized test-site inspection or test flow.
 
-A site may expose an optional JSON requirements document. When it does not,
-the adapter uses the conventional Dudas endpoints and field names. Hosts must
-still be listed in AUTHORIZED_TEST_DOMAINS, and the caller must explicitly
-authorize the live test site.
+Sites may expose a JSON requirements document. Known site-specific contracts
+are inferred only for explicitly onboarded test hosts; unknown sites must
+publish a contract before any write operation is considered.
 """
 from __future__ import annotations
 
@@ -115,11 +114,7 @@ def height_for_score(score: int, preferred_min: int = 1900, preferred_max: int =
 
 
 def endpoint_url(base_url: str, endpoint: str) -> str:
-    """Resolve an endpoint against the site page or its origin.
-
-    API roots such as ``/api/dudas/score`` are origin-relative, while a
-    path such as ``/game/start`` is relative to the selected site page.
-    """
+    """Resolve a root-relative endpoint against the selected site origin."""
     if endpoint.startswith("/api/"):
         parsed = urlparse(base_url.rstrip("/"))
         return f"{parsed.scheme}://{parsed.netloc}{endpoint}"
@@ -161,7 +156,7 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
             if prefix:
                 candidates.append(f"{parsed.scheme}://{parsed.netloc}{prefix}/requirements")
             origin = f"{parsed.scheme}://{parsed.netloc}"
-            candidates.extend([origin + "/requirements", origin + "/api/requirements", origin + "/api/dudas/requirements"])
+            candidates.extend([origin + "/requirements", origin + "/api/requirements"])
         errors = []
         for path in dict.fromkeys(candidates):
             url = path if path.startswith(("http://", "https://")) else f"{base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -172,28 +167,32 @@ async def inspect_site(base_url: str, requirements_path: str | None = None) -> d
                 return result
             except Exception as exc:
                 errors.append(f"{url}: {exc}")
-        # The requirements document is optional. This fallback keeps judges
-        # able to test a compatible site that exposes the conventional API but
-        # does not publish a separate contract document.
-        result = {
-            "contract_source": "inferred-conventional-endpoints",
-            "contract_optional": True,
-            "endpoints": {
-                "leaderboard": "/api/dudas/board?limit=10&window=today",
-                "start": "/api/dudas/start",
-                "submit": "/api/dudas/score",
-            },
-            "identity": {"field": "address"},
-            "token": {"field": "token", "json_path": "token"},
-            "score_fields": {
-                "score": "score",
-                "height": "height",
-                "coins": "coins",
-                "toads": "toads",
-                "combo": "combo",
-            },
-            "discovery_errors": errors,
-        }
+        # The racing test site has no requirements document. Its public
+        # contract is read-only for this bot: leaderboard rows are exposed at
+        # /api/competition-leaderboard, while starting a competition requires
+        # the website's authenticated browser session. Never invent a score
+        # endpoint or send an incompatible synthetic payload to it.
+        if parsed.hostname == "racing.eldoggy.com":
+            result = {
+                "contract_source": "inferred-racing-contract",
+                "contract_optional": True,
+                "site_type": "competition-racing",
+                "capabilities": {"read_only": True, "bot_submission": False},
+                "endpoints": {"leaderboard": "/api/competition-leaderboard", "start": "/api/competition-start", "submit": None},
+                "identity": {"field": "x_user_id", "alternatives": ["x_username"]},
+                "token": {"field": "tokenKey", "json_path": "tokenKey"},
+                "score_fields": {"score": "high_score"},
+                "leaderboard_shape": {"rows_path": "scores"},
+                "timing": {"allowed_seconds": 90},
+                "discovery_errors": errors,
+            }
+        else:
+            result = {
+                "contract_source": "undiscovered",
+                "contract_optional": True,
+                "capabilities": {"read_only": False, "bot_submission": False},
+                "discovery_errors": errors,
+            }
         if cache_seconds > 0:
             _REQUIREMENTS_CACHE[cache_key] = (time.monotonic(), result)
         return result
@@ -211,6 +210,9 @@ async def run_site(
     if increment < 0 or not 0 < min_height <= max_height or (play_duration_seconds is not None and play_duration_seconds <= 0):
         raise ValueError("score increment must be non-negative, optional play duration must be greater than 0, and height range must be positive")
     requirements = await inspect_site(base_url)
+    capabilities = requirements.get("capabilities", {})
+    if capabilities.get("bot_submission") is False:
+        raise ValueError("this site exposes a browser-session-only competition flow; the bot will not submit a synthetic score")
     endpoints = requirements.get("endpoints", {})
     identity_spec = requirements.get("identity", {})
     token_spec = requirements.get("token", {})

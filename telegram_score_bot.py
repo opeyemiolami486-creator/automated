@@ -13,8 +13,8 @@ Commands:
   /clear
 
 The selected site may expose a requirements contract and must be allowlisted by
-AUTHORIZED_TEST_DOMAINS. Sites without a contract use the conventional Dudas
-API defaults. The default remains the local mock API.
+AUTHORIZED_TEST_DOMAINS. The racing test site is supported as a read-only
+competition leaderboard; score submission remains in its authenticated browser.
 """
 from __future__ import annotations
 
@@ -287,12 +287,18 @@ async def handle_update(session: aiohttp.ClientSession, state: dict[str, Any], u
         async with session.get(endpoint_url(site, leaderboard_path)) as response:
             response.raise_for_status()
             board = await response.json(content_type=None)
-        rows = board.get("list", [])
+        rows = board.get("scores", board.get("list", board.get("entries", []))) if isinstance(board, dict) else board
+        if not isinstance(rows, list):
+            rows = []
         if not rows:
             await send_message(session, chat_id, f"Leaderboard at {site} is empty.")
         else:
             lines = [f"Leaderboard at {site} ({len(rows)} shown):"]
-            lines.extend(f"#{r.get('rank')} {r.get('name')} — {r.get('score')} score, {r.get('height')}m" for r in rows)
+            lines.extend(
+                f"{i}. {r.get('x_username', r.get('name', r.get('x_user_id', 'unknown')))} — "
+                f"{r.get('high_score', r.get('score', 'reported by site'))} score"
+                for i, r in enumerate(rows, 1)
+            )
             mode = "ON" if chat_id in active else "OFF"
             await send_message(session, chat_id, "\n".join(lines) + f"\nAutomation: {mode}")
     elif command == "/run":
