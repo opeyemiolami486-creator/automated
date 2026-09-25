@@ -35,7 +35,7 @@ POST /submit
 {"question_id": "q-123", "answer": "approved answer", "token": "server-issued-token"}
 ```
 
-A browser game may use a server-issued run token, but each test site has its own contract: `POST /start` returns a run token and a later `POST /score` sends the completed result with that token. For a hackathon answer system, use your own documented field names and endpoint URLs; do not assume that an unrelated website accepts this payload.
+A Webcade Dudas Jump-style game uses the same general pattern: `POST /start` returns a run token and a later `POST /score` sends the completed result with that token. For a hackathon answer system, use your own documented field names and endpoint URLs; do not assume that an unrelated website accepts this payload.
 
 ### Team test-site token compatibility
 
@@ -350,7 +350,7 @@ server-issued-token validation.
 
 ### Reference API compatibility check
 
-The racing test site was checked without posting a score. Its leaderboard
+The public Dudas Jump API was checked without posting a score. Its leaderboard
 response uses `list`, `rank`, `name`, `score`, `height`, `toads`, and `secs`, and
 `POST /api/dudas/start` returned a server-issued `{ "token": "..." }`. The
 public site does not expose `/api/dudas/requirements`; the client now treats a
